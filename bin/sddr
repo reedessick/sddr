@@ -43,7 +43,7 @@ logprior = -np.log(opts.prior_max-opts.prior_min)
 #-------------------------------------------------
 
 ### read in samples
-samples = utils.load_hdf5(args, verbose=opts.verbose)['log10NLTides_A0']
+samples = utils.load(args, verbose=opts.verbose)
 
 if opts.verbose:
     print('partitioning samples into %d subsets'%opts.num_subsets)

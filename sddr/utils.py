@@ -27,36 +27,53 @@ DEFAULT_NUM_SUBSETS = 10
 
 #-------------------------------------------------
 
-def load_hdf5(paths, verbose=False):
+def load(paths, verbose=False):
     """
-    load in samples from an hdf5 file
+    load in samples from files
+    pulls out only log10NLTides_A0
     """
     samples = None
     for path in paths:
         if verbose:
             print('reading samples from: '+path)
 
-        with h5py.File(path, 'r') as file_obj:
-            new = file_obj['lalinference/lalinference_mcmc/posterior_samples'][...]
-
-        if verbose:
-            print('    found %d samples'%len(new))
-
-        new = new[len(new)/2:] ### throw out the burn in...
-
-        if verbose:
-            print('    retained %d samples'%len(new))
+        if path.endswith('hdf5'):
+            new = load_hdf5(path, verbose=verbose)
+        elif path.endswidth('dat'):
+            new = load_dat(path, verbose=verbose)
+        else:
+            raise ValueError, 'do not know how to load: '+path
 
         if samples is None:
             samples = new
-
         else:
             samples = np.concatenate((samples, new))
 
     if verbose:
         print('retained %d samples in all'%len(samples))
-
     return samples
+
+def load_hdf5(path, verbose=False):
+    with h5py.File(path, 'r') as file_obj:
+        new = file_obj['lalinference/lalinference_mcmc/posterior_samples']['log10NLTides_A0']
+    if verbose:
+        print('    found %d samples'%len(new))
+
+    new = new[len(new)/2:] ### FIXME: 
+                           ###    throw out the burn in more intelligently?
+                           ###    also downsample to uncorrelated samples?
+
+    if verbose:
+        print('    retained %d samples'%len(new))
+    return new
+
+def load_dat(path, verbose=False):
+    new = np.genfromtxt(path, names=True)['log10NLTides_A0']
+    if verbose:
+        print('    found %d samples'%len(new))
+    return new
+
+#------------------------
 
 def partition(data, num_subsets=DEFAULT_NUM_SUBSETS):
     '''
@@ -77,7 +94,7 @@ def hist(data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX)
     compute a simple histogram and return the normalized count in the first bin
     '''
     if b is None:
-        b = int(10*len(data)**0.5)
+        b = int(len(data)**0.5)
 
     n, b = np.histogram(data, b, range=(prior_min, prior_max))
     return np.log(n[0]) - np.log(b[1]-b[0]) - np.log(np.sum(n))

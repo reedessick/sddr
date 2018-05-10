@@ -64,24 +64,24 @@ def partition(data, num_subsets=DEFAULT_NUM_SUBSETS):
 
 #-------------------------------------------------
 
-def hist(data, bins=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+def hist(data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute a simple histogram and return the normalized count in the first bin
     '''
-    if bins is None:
-        bins = 10/len(data)**0.5
+    if b is None:
+        b = 10/len(data)**0.5
 
-    n, b = np.histogram(data, bins, range=(prior_min, prior_max))
+    n, b = np.histogram(data, b, range=(prior_min, prior_max))
     return np.log(n[0]) - np.log(b[1]-b[0]) - np.log(np.sum(n))
 
-def chist(data, bins=None, deg=2, fit_max=DEFAULT_PRIOR_MAX, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+def chist(data, b=None, deg=2, fit_max=DEFAULT_PRIOR_MAX, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute a cumulative histogram and fit it with a low-order polynomial, returning the slope at the prior_min
     '''
-    if bins is None:
-        bins = 2*len(data)
+    if b is None:
+        b = 2*len(data)
 
-    n, b = np.histogram(data, bins, range=(prior_min, prior_max))
+    n, b = np.histogram(data, b, range=(prior_min, prior_max))
     c = np.cumsum(n) ### make a cumulative histogram
     c /= c[-1] ### normalize this to 1
 
@@ -92,7 +92,11 @@ def chist(data, bins=None, deg=2, fit_max=DEFAULT_PRIOR_MAX, prior_min=DEFAULT_P
 
     return np.log(np.sum([(deg-i)(prior_min)**(deg-i-1)*params[i] for i in xrange(deg+1)]))
 
-def kde(data, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+def kde(data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+    '''
+    compute a kde at prior_min
+    '''
+    """
     obj = FixedBandwidth1DKDE(
         data,
         num_points=DEFAULT_NUM_POINTS,
@@ -105,6 +109,43 @@ def kde(data, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     obj.compute()
 
     return obj.logpdf(prior_min)
+    """
+
+    return _compute_logkde(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max)
+
+def _compute_logkde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+    '''
+    compute the log(kde) @ x given data with the specified bandwidth normalized within the prior bounds with reflecting boundary conditions
+
+    ONLY SUPPORTS SCALAR x
+    '''
+    N = len(data)
+    twobsqrd = 2*b**2
+    bsqrt2 = b*2**0.5
+
+    # compute log(kernel) for each data sample, incorporating reflecting boundaries
+    logkde = np.concatenate((
+        -(x-data)**2/twobsqrd,
+        -(x-2*prior_min+data)**2/twobsqrd,
+        -(x-2*prior_max+data)**2/twobsqrd
+    )) - 0.5*np.log(2*np.pi*b**2) ### subtract the normalization for the Gaussian kernel
+
+    # sum all contributions together, retaining high precision
+    m = np.max(logkde)
+    logkde = np.log(np.sum(np.exp(logkde-m))) + m
+
+    # compute the integral between the prior bounds
+    norm = 0.5*np.sum( \
+        erf((prior_max-data)/bsqrt2) - erf((prior_min-data)/bsqrt2) \
+      + erf((prior_max-2*prior_min+data)/bsqrt2) - erf((data-prior_min)/bsqrt2) \
+      + erf((data-prior_max)/bsqrt2) - erf((prior_min-2*prior_max+data)/bsqrt2) \
+    )
+
+    return logkde - np.log(norm)
+
+#-------------------------------------------------
+
+### PROBABLY DEPRECATED BELOW THIS POINT!!!
 
 #-------------------------------------------------
 
@@ -462,38 +503,6 @@ class FixedBandwidth1DKDE(object):
     def logpdf_quantile(self, ranks, q):
         return np.log(self.pdf_quantile(ranks, q))
 
-
-"""
-def logkde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
-    '''
-    compute the log(kde) @ x given data with the specified bandwidth normalized within the prior bounds with reflecting boundary conditions
-
-    ONLY SUPPORTS SCALAR x
-    '''
-    N = len(data)
-    twobsqrd = 2*b**2
-    bsqrt2 = b*2**0.5
-
-    # compute log(kernel) for each data sample, incorporating reflecting boundaries
-    logkde = np.concatenate((
-        -(x-data)**2/twobsqrd,
-        -(x-2*prior_min+data)**2/twobsqrd,
-        -(x-2*prior_max+data)**2/twobsqrd
-    )) - 0.5*np.log(2*np.pi*b**2) ### subtract the normalization for the Gaussian kernel
-
-    # sum all contributions together, retaining high precision
-    m = np.max(logkde)
-    logkde = np.log(np.sum(np.exp(logkde-m))) + m
-
-    # compute the integral between the prior bounds
-    norm = 0.5*np.sum( \
-        erf((prior_max-data)/bsqrt2) - erf((prior_min-data)/bsqrt2) \
-      + erf((prior_max-2*prior_min+data)/bsqrt2) - erf((data-prior_min)/bsqrt2) \
-      + erf((data-prior_max)/bsqrt2) - erf((prior_min-2*prior_max+data)/bsqrt2) \
-    )
-
-    return logkde - np.log(norm)
-
 def loglike(data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute the leave-one-out loglikelihood
@@ -509,4 +518,3 @@ def loglike(data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PR
     logL /= N
 
     return N
-"""

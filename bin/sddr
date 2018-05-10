@@ -22,6 +22,10 @@ parser.add_option('', '--num-subsets', default=utils.DEFAULT_NUM_SUBSETS, type='
 parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
 parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
 
+parser.add_option('', '--hist-bins', defualt=None, type='int')
+parser.add_option('', '--chist-bins', defualt=None, type='int')
+parser.add_option('', '--kde-b', defualt=utils.DEFAULT_B, type='float')
+
 #parser.add_option('-o', '--output-dir', default='.', type='string')
 #parser.add_option('-t', '--tag', default='', type='string')
 
@@ -38,16 +42,21 @@ logprior = -np.log(opts.prior_max-opts.prior_min)
 ### read in samples
 samples = utils.load_paths(args, verbose=opts.verbose)
 
-#-------------------------------------------------
-
 if opts.verbose:
     print('partitioning samples into %d subsets'%opts.num_subsets)
 subsets = partition(samples, num_subsets=opts.num_subsets)
 
-for foo, name in [(utils.hist, 'raw histogram'), (utils.chist, 'fit cumulative histogram'), (utils.kde, 'kde with reflecting boundaries')]:
+#-------------------------------------------------
+
+### iterate and compute point estimates for various methods
+for foo, b, name in [
+        (utils.hist, opts.hist_bins, 'raw histogram'),
+        (utils.chist, opts.chist_bins, 'fit cumulative histogram'),
+        (utils.kde, opts.kde_b, 'kde with reflecting boundaries'),
+    ]:
     print('working on '+name)
-    logpost = foo(samples, prior_min=opts.prior_min, prior_max=opts.prior_max)
-    logposts = [foo(subset, prior_min=opts.prior_min, prior_max=opts.prior_max) for subset in subsets]
+    logpost = foo(samples, b=b, prior_min=opts.prior_min, prior_max=opts.prior_max)
+    logposts = [foo(subset, b=b, prior_min=opts.prior_min, prior_max=opts.prior_max) for subset in subsets]
 
     report = '''\
     logpost = %.6f
@@ -61,7 +70,16 @@ for foo, name in [(utils.hist, 'raw histogram'), (utils.chist, 'fit cumulative h
     stdv(logpost - logprior) = %.6f'''%(np.mean(logposts)-logprior, np.stdv(logposts))
     print(report)
 
+### compute distribution for logpost-logprior
 raise NotImplementedError, '''\
 compute KDE object and look at distribution of logkde - logprior at prior_min
     find the amount of probability associated with logkde >= logprior at prior_min
 '''
+obj = utils.FixedBandwidth1DKDE(
+        samples, ### FIXME: we really should pass uncorrelated samples here...
+        compute=False,
+        prior_min=opts.prior_min,
+        prior_max=opts.prior_max,
+)
+obj.optimize()
+obj.compute()

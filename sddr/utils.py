@@ -11,6 +11,8 @@ from scipy.special import polygamma
 
 from scipy.stats import beta
 
+import h5py
+
 #-------------------------------------------------
 
 LOG3 = np.log(3)
@@ -19,8 +21,9 @@ DEFAULT_NUM_POINTS = 101
 DEFAULT_B = 0.1
 DEFAULT_PRIOR_MIN = -10
 DEFAULT_PRIOR_MAX = -4
+DEFAULT_FIT_MAX = -9
 
-DEFAULT_NUM_SUBSETS
+DEFAULT_NUM_SUBSETS = 10
 
 #-------------------------------------------------
 
@@ -29,19 +32,24 @@ def load_hdf5(paths, verbose=False):
     load in samples from an hdf5 file
     """
     samples = None
-    for path in args:
+    for path in paths:
         if verbose:
             print('reading samples from: '+path)
+
         with h5py.File(path, 'r') as file_obj:
             new = file_obj['lalinference/lalinference_mcmc/posterior_samples'][...]
+
         if verbose:
             print('    found %d samples'%len(new))
+
         new = new[len(new)/2:] ### throw out the burn in...
+
         if verbose:
             print('    retained %d samples'%len(new))
 
         if samples is None:
             samples = new
+
         else:
             samples = np.concatenate((samples, new))
 
@@ -54,10 +62,10 @@ def partition(data, num_subsets=DEFAULT_NUM_SUBSETS):
     '''
     partition samples into separate subsets
     '''
-    N=len(samples)
-    subsets = [np.zeros(N, dtype=bool) for _ in xrange(opts.num_subsets)]
+    N=len(data)
+    subsets = [np.zeros(N, dtype=bool) for _ in xrange(num_subsets)]
     for i in xrange(N):
-        n = i%opts.num_subsets
+        n = i%num_subsets
         subsets[n][i] = True
 
     return [data[truth] for truth in subsets]
@@ -69,12 +77,12 @@ def hist(data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX)
     compute a simple histogram and return the normalized count in the first bin
     '''
     if b is None:
-        b = 10/len(data)**0.5
+        b = int(10*len(data)**0.5)
 
     n, b = np.histogram(data, b, range=(prior_min, prior_max))
     return np.log(n[0]) - np.log(b[1]-b[0]) - np.log(np.sum(n))
 
-def chist(data, b=None, deg=2, fit_max=DEFAULT_PRIOR_MAX, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+def chist(data, b=None, deg=2, fit_max=DEFAULT_FIT_MAX, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute a cumulative histogram and fit it with a low-order polynomial, returning the slope at the prior_min
     '''
@@ -82,15 +90,14 @@ def chist(data, b=None, deg=2, fit_max=DEFAULT_PRIOR_MAX, prior_min=DEFAULT_PRIO
         b = 2*len(data)
 
     n, b = np.histogram(data, b, range=(prior_min, prior_max))
-    c = np.cumsum(n) ### make a cumulative histogram
-    c /= c[-1] ### normalize this to 1
+    c = np.cumsum(n).astype(float)/np.sum(n) ### make a cumulative histogram
 
     ### fit to a low-order polynomial
     B = 0.5*(b[1:]+b[:-1])
     truth = B<=fit_max
     params = np.polyfit(B[truth], c[truth], deg)
 
-    return np.log(np.sum([(deg-i)(prior_min)**(deg-i-1)*params[i] for i in xrange(deg+1)]))
+    return np.log(np.sum([params[i]*(deg-i)*(prior_min)**(deg-i-1) for i in xrange(deg)]))
 
 def kde(data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''

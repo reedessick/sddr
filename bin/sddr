@@ -1,0 +1,67 @@
+#!/usr/bin/env python
+
+__usage__ = "sddr [--options] samples.hdf5 [samples.hdf5 samples.hdf5 ...]"
+__doc__ = ""
+__author__ = "reed.essick@ligo.org"
+
+#-------------------------------------------------
+
+from sddr import utils
+import numpy as np
+
+from optparse import OptionParser
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__doc__)
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+
+parser.add_option('', '--num-subsets', default=utils.DEFAULT_NUM_SUBSETS, type='int')
+
+parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
+parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
+
+#parser.add_option('-o', '--output-dir', default='.', type='string')
+#parser.add_option('-t', '--tag', default='', type='string')
+
+opts, args = parser.parse_args()
+assert args, 'please supply at least 1 input argument\n%s'%__usage__
+
+#if opts.tag:
+#    opts.tag = "_"+opts.tag
+
+logprior = -np.log(opts.prior_max-opts.prior_min)
+
+#-------------------------------------------------
+
+### read in samples
+samples = utils.load_paths(args, verbose=opts.verbose)
+
+#-------------------------------------------------
+
+if opts.verbose:
+    print('partitioning samples into %d subsets'%opts.num_subsets)
+subsets = partition(samples, num_subsets=opts.num_subsets)
+
+for foo, name in [(utils.hist, 'raw histogram'), (utils.chist, 'fit cumulative histogram'), (utils.kde, 'kde with reflecting boundaries')]:
+    print('working on '+name)
+    logpost = foo(samples, prior_min=opts.prior_min, prior_max=opts.prior_max)
+    logposts = [foo(subset, prior_min=opts.prior_min, prior_max=opts.prior_max) for subset in subsets]
+
+    report = '''\
+    logpost = %.6f
+    logprior = %.6f
+    logpost - logpost = %.6f'''%(logpost, logprior, logpost-logprior)
+    for i, lp in enumerate(logposts):
+        report += '''
+        subset %02d logpost - logprior = %.6f'''%(lp-logprior)
+    report += '''
+    mean(logpost - logprior) = %.6f
+    stdv(logpost - logprior) = %.6f'''%(np.mean(logposts)-logprior, np.stdv(logposts))
+    print(report)
+
+raise NotImplementedError, '''\
+compute KDE object and look at distribution of logkde - logprior at prior_min
+    find the amount of probability associated with logkde >= logprior at prior_min
+'''

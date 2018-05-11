@@ -67,6 +67,8 @@ if opts.verbose:
     print('partitioning samples into %d subsets'%opts.num_subsets)
 subsets = utils.partition(samples, num_subsets=opts.num_subsets)
 
+sqrtnum_subsets = opts.num_subsets**0.5
+
 #-------------------------------------------------
 
 ### iterate and compute point estimates for various methods
@@ -94,7 +96,7 @@ for foo, b, kwargs, name in [
         subset %02d (%04d samples) logpost - logprior = %.6f'''%(i+1, len(subsets[i]), lp-logprior)
     report += '''
     mean(logpost - logprior) = %.6f
-    stdv(logpost - logprior) = %.6f'''%(np.mean(logposts)-logprior, np.std(logposts))
+    stdv(logpost - logprior) = %.6f'''%(np.mean(logposts)-logprior, np.std(logposts)/sqrtnum_subsets)
     print(report)
 
 ### compute distribution for logpost-logprior
@@ -125,7 +127,7 @@ with open(path, 'w') as file_obj:
 ### NOTE: log(E[post]) will "bias" our inference to larger values compared to E[log(post)], so we report both
 
 post = np.exp(logpost)
-raise NotImplementedError, 'this is broken: pdf = np.gradient(cdf, post)\nnp.gradient expects uniform sampling, which is not true of our post'
+pdf = np.gradient(cdf, np.gradient(post))
 norm = np.trapz(pdf, post)
 
 Elogpost = np.trapz(pdf*logpost, post)/np.trapz(pdf, post)
@@ -147,7 +149,7 @@ for subset in subsets:
         verbose=opts.Verbose,
     )
     post = np.exp(logpost)
-    raise NotImplementedError, 'this is broken: pdf = np.gradient(cdf, post)'
+    pdf = np.gradient(cdf, np.gradient(post))
     norm = np.trapz(pdf, post)
 
     Elogposts.append(np.trapz(pdf*logpost, post)/norm)
@@ -169,5 +171,5 @@ report += '''
     mean(logE[post] - logprior) = %.6f
     stdv(logE[post] - logprior) = %.6f
     mean(E[logpost] - logprior) = %.6f
-    stdv(E[logpost] - logprior) = %.6f'''%(np.mean(logEposts)-logprior, np.std(logEposts), np.mean(Elogposts)-logprior, np.std(Elogposts))
+    stdv(E[logpost] - logprior) = %.6f'''%(np.mean(logEposts)-logprior, np.std(logEposts)/sqrtnum_subsets, np.mean(Elogposts)-logprior, np.std(Elogposts)/sqrtnum_subsets)
 print(report)

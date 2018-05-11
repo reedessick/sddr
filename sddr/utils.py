@@ -100,7 +100,7 @@ def hist(data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX)
     compute a simple histogram and return the normalized count in the first bin
     '''
     if b is None:
-        b = int(len(data)**0.5)
+        b = int(len(data)**0.5/10)
 
     n, b = np.histogram(data, b, range=(prior_min, prior_max))
     return np.log(n[0]) - np.log(b[1]-b[0]) - np.log(np.sum(n))

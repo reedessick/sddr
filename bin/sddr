@@ -62,7 +62,7 @@ subsets = utils.partition(samples, num_subsets=opts.num_subsets)
 for foo, b, kwargs, name in [
         (utils.hist, opts.hist_bins, {}, 'raw histogram'),
         (utils.chist, opts.chist_bins, {}, 'fit cumulative histogram'),
-        (utils.kde, opts.kde_b, {}, 'kde with reflecting boundaries'),
+        (utils.kde, opts.kde_b, {}, 'kde with reflecting boundaries and b=%.3e'%opts.kde_b),
         (utils.max_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and maximized bandwidth'),
         (utils.marg_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'dlogl':opts.kde_dlogl, 'num_points':opts.kde_num_points, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and marginalized bandwidth'),
     ]:

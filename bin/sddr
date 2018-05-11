@@ -1,15 +1,18 @@
 #!/usr/bin/env python
 
 __usage__ = "sddr [--options] samples.hdf5 [samples.hdf5 samples.hdf5 ...]"
-__doc__ = ""
+__doc__ = "an executable that computes things"
 __author__ = "reed.essick@ligo.org"
 
 #-------------------------------------------------
 
-from sddr import utils
+import os
 import numpy as np
 
 from optparse import OptionParser
+
+### non-standard libraries
+from sddr import utils
 
 #-------------------------------------------------
 
@@ -17,6 +20,9 @@ parser = OptionParser(usage=__usage__, description=__doc__)
 
 parser.add_option('-v', '--verbose', default=False, action='store_true')
 parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_option('', '--skip', default=[], type='string', action='append',
+    help='skip the computation of this particular estimate. Note, we require an exact match of the name, so these options might be pretty long...')
 
 parser.add_option('', '--num-subsets', default=utils.DEFAULT_NUM_SUBSETS, type='int')
 
@@ -32,18 +38,23 @@ parser.add_option('', '--kde-b-range', nargs=2, default=utils.DEFAULT_B_RANGE, t
 parser.add_option('', '--kde-rtol', default=utils.DEFAULT_RTOL, type='float')
 
 parser.add_option('', '--kde-dlogl', default=utils.DEFAULT_DLOGL, type='float')
-parser.add_option('', '--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type='float')
+parser.add_option('', '--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type='int')
 
-#parser.add_option('-o', '--output-dir', default='.', type='string')
-#parser.add_option('-t', '--tag', default='', type='string')
+parser.add_option('', '--kde-num-quantiles', default=utils.DEFAULT_NUM_QUANTILES, type='int')
+
+parser.add_option('-o', '--output-dir', default='.', type='string')
+parser.add_option('-t', '--tag', default='', type='string')
 
 opts, args = parser.parse_args()
 assert args, 'please supply at least 1 input argument\n%s'%__usage__
 
 opts.verbose |= opts.Verbose
 
-#if opts.tag:
-#    opts.tag = "_"+opts.tag
+if not os.path.exists(opts.output_dir):
+    os.makedirs(opts.output_dir)
+
+if opts.tag:
+    opts.tag = "_"+opts.tag
 
 logprior = -np.log(opts.prior_max-opts.prior_min)
 
@@ -66,6 +77,9 @@ for foo, b, kwargs, name in [
         (utils.max_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and maximized bandwidth'),
         (utils.marg_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'dlogl':opts.kde_dlogl, 'num_points':opts.kde_num_points, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and marginalized bandwidth'),
     ]:
+    if name in opts.skip:
+        continue
+
     print('working on '+name)
     logpost = foo(samples, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs)
     logposts = [foo(subset, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs) for subset in subsets]
@@ -84,15 +98,76 @@ for foo, b, kwargs, name in [
     print(report)
 
 ### compute distribution for logpost-logprior
-raise NotImplementedError, '''\
-compute KDE object and look at distribution of logkde - logprior at prior_min
-    find the amount of probability associated with logkde >= logprior at prior_min
-'''
-obj = utils.FixedBandwidth1DKDE(
-        samples, ### FIXME: we really should pass uncorrelated samples here...
-        compute=False,
+print('computing quantiles')
+logpost, cdf = utils.marg_betakde(
+    samples,
+    opts.kde_b_range,
+    prior_min=opts.prior_min,
+    prior_max=opts.prior_max,
+    rtol=opts.kde_rtol,
+    dlogl=opts.kde_dlogl,
+    num_points=opts.kde_num_points,
+    num_quantiles=opts.kde_num_quantiles,
+    verbose=opts.Verbose,
+)
+### save a representation of the whole process for logpost(prior_min) to disk
+path = os.path.join(opts.output_dir, 'sddr%s.txt'%opts.tag)
+if opts.verbose:
+    print('writing quantiles to: '+path)
+with open(path, 'w') as file_obj:
+    print >> file_obj, 'logpost-logprior cdf'
+    template = '%.6f %.6f'
+    for tup in zip(logpost-logprior, cdf):
+        print >> file_obj, template%tup
+
+### estimate the expected value of the posterior at this point, and then report the log of that.
+### This is essentially what all the other estimators are doing, so we should mimic that
+### NOTE: log(E[post]) will "bias" our inference to larger values compared to E[log(post)], so we report both
+
+post = np.exp(logpost)
+raise NotImplementedError, 'this is broken: pdf = np.gradient(cdf, post)\nnp.gradient expects uniform sampling, which is not true of our post'
+norm = np.trapz(pdf, post)
+
+Elogpost = np.trapz(pdf*logpost, post)/np.trapz(pdf, post)
+logEpost = np.log(np.trapz(pdf*post, post)/np.trapz(pdf, post))
+
+### repeat for subsets, without saving to disk
+logEposts = []
+Elogposts = []
+for subset in subsets:
+    logpost, cdf = utils.marg_betakde(
+        subset,
+        opts.kde_b_range,
         prior_min=opts.prior_min,
         prior_max=opts.prior_max,
-)
-obj.optimize()
-obj.compute()
+        rtol=opts.kde_rtol,
+        dlogl=opts.kde_dlogl,
+        num_points=opts.kde_num_points,
+        num_quantiles=opts.kde_num_quantiles,
+        verbose=opts.Verbose,
+    )
+    post = np.exp(logpost)
+    raise NotImplementedError, 'this is broken: pdf = np.gradient(cdf, post)'
+    norm = np.trapz(pdf, post)
+
+    Elogposts.append(np.trapz(pdf*logpost, post)/norm)
+    logEposts.append(np.log(np.trapz(pdf*post, post)/norm))
+
+report = '''\
+    logE[post] = %.6f
+    E[logpost] = %.6f
+    logprior = %.6f
+    logE[post] - logpost = %.6f
+    E[logpost] - logpost = %.6f'''%(logEpost, Elogpost, logprior, logEpost-logprior, Elogpost-logprior)
+if opts.Verbose:
+    for i, (lEp, Elp) in enumerate(zip(logEposts, Elogposts)):
+        report += '''
+        subset %02d (%04d samples)
+            logE[post] - logprior = %.6f
+            E[logpost] - logprior = %.6f'''%(i+1, len(subsets[i]), lEp-logprior, Elp-logprior, )
+report += '''
+    mean(logE[post] - logprior) = %.6f
+    stdv(logE[post] - logprior) = %.6f
+    mean(E[logpost] - logprior) = %.6f
+    stdv(E[logpost] - logprior) = %.6f'''%(np.mean(logEposts)-logprior, np.std(logEposts), np.mean(Elogposts)-logprior, np.std(Elogposts))
+print(report)

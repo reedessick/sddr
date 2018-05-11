@@ -17,6 +17,8 @@ import h5py
 
 LOG3 = np.log(3)
 DEFAULT_NUM_POINTS = 101
+DEFAULT_NUM_QUANTILES = 1001
+DEFAULT_NUM_SUBSETS = 10
 
 DEFAULT_B = 0.1
 DEFAULT_B_RANGE = (1e-6, 1e+2)
@@ -26,8 +28,6 @@ DEFAULT_DLOGL = 10
 DEFAULT_PRIOR_MIN = -10
 DEFAULT_PRIOR_MAX = -4
 DEFAULT_FIT_MAX = -9
-
-DEFAULT_NUM_SUBSETS = 10
 
 #-------------------------------------------------
 
@@ -43,8 +43,10 @@ def load(paths, verbose=False):
 
         if path.endswith('hdf5'):
             new = load_hdf5(path, verbose=verbose)
-        elif path.endswidth('dat'):
+
+        elif path.endswith('dat'):
             new = load_dat(path, verbose=verbose)
+
         else:
             raise ValueError, 'do not know how to load: '+path
 
@@ -128,8 +130,45 @@ def max_kde(data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT
     return _compute_logkde(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max)
 
 def marg_kde(data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, verbose=False):
-    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over Bs
+    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over bandwidth
     return np.log(np.sum([weight*np.exp(_compute_logkde(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max)) for b, weight in zip(bs, weights)]))
+
+def marg_betakde(data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
+    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over bandwidth
+    params = [_compute_betadistrib(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max) for b in bs]
+
+    ### figure out boundaries for our initial gridding
+    lq = 1./num_quantiles
+    low = np.infty
+    hgh = -np.infty
+    for _alpha, _beta, _scale in params:
+        l = np.log(beta.ppf(lq, _alpha, _beta)*_scale)
+        h = np.log(_scale) ### just take the biggest possible value allowed by the beta distribution
+
+        low = min(l, low) ### this skips nans, which is pretty convenient
+        hgh = max(h, hgh)
+
+    ### compute the cdf along the initial grid
+    logkde = np.linspace(low, hgh, num_quantiles) ### our gridding in logkde
+    cdf = _compute_cdf(logkde, params, weights)
+
+    ### re-structure the grid to give something closer to a reasonable set of quantiles
+#    if np.any(cdf<=lq):
+#        low = logkde[cdf<=lq][-1]
+#
+#    if np.any(cdf>=1.-lq):
+#        hgh = logkde[cdf>=1.-lq][0]
+#    logkde = np.linspace(low, hgh, num_quantiles)
+
+    logkde = np.interp(np.linspace(lq, 1.-lq, num_quantiles), cdf, logkde) ### interpolate to approximate even sampling in probability distrib
+    cdf = _compute_cdf(logkde, params, weights) ### recompute at the new grid placement
+
+    return logkde, cdf
+
+def _compute_cdf(logkde, params, weights):
+    exp = np.exp(logkde)
+    cdf = np.array([beta.cdf(exp/_scale, _alpha, _beta) for _alpha, _beta, _scale in params]) ### cdf for each param separately
+    return np.sum( cdf.transpose()*weights, axis=1 )
 
 def _compute_logkde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
@@ -137,7 +176,6 @@ def _compute_logkde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max
 
     ONLY SUPPORTS SCALAR x
     '''
-    N = len(data)
     twobsqrd = 2*b**2
     bsqrt2 = b*2**0.5
 
@@ -146,7 +184,7 @@ def _compute_logkde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max
         -(x-data)**2/twobsqrd,
         -(x-2*prior_min+data)**2/twobsqrd,
         -(x-2*prior_max+data)**2/twobsqrd
-    )) - 0.5*np.log(2*np.pi*b**2) ### subtract the normalization for the Gaussian kernel
+    )) - 0.5*np.log(np.pi*twobsqrd) ### subtract the normalization for the Gaussian kernel
 
     # sum all contributions together, retaining high precision
     m = np.max(logkde)
@@ -160,6 +198,60 @@ def _compute_logkde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max
     )
 
     return logkde - np.log(norm)
+
+def _compute_betadistrib(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+    '''
+    compute the best-fit beta distribution for kde(x|b)
+    return alpha, beta, scale
+
+    we fit f = ((2*np.pi*b**2)**0.5 * norm / 3)
+
+    '''
+    N = len(data)
+    logN = np.log(N)
+    twobsqrd = 2*b**2
+    bsqrt2 = b*2**0.5
+
+    # compute log(kernel) for each data sample, incorporating reflecting boundaries
+    logf = np.array([
+        -(x-data)**2/twobsqrd,
+        -(x-2*prior_min+data)**2/twobsqrd,
+        -(x-2*prior_max+data)**2/twobsqrd
+    ])
+    # sum over reflecting boundaries, retaining high precision
+    m = np.max(logf, axis=0)
+    logf = np.log(np.sum(np.exp(logf - m), axis=0)) + m -np.log(3) ### normalization by 3 guarantees f \in [0,1]
+
+    # compute the second moment
+    logf2 = logf*2
+
+    # sum all contributions for different samples together, retaining high precision
+    m = np.max(logf)
+    logf = np.log(np.sum(np.exp(logf-m))) + m - logN
+
+    # repeat for second moment
+    m = np.max(logf2)
+    logf2 = np.log(np.sum(np.exp(logf2-m))) + m - logN
+
+    # compute the beta-distrib parameters that match these moments
+    e = np.exp(logf)               ### expected value
+    v = (np.exp(logf2) - e**2)/N   ### variance
+
+    x = ((1.-e)*e - v)
+    _alpha = (e/v)*x                ### beta distribution parameters
+    _beta = ((1.-e)/v)*x
+
+    ### FIXME: check for unphysical variances here?
+
+    # compute the scale by which we multiply the beta distrib via an integral between the prior bounds
+    norm = 0.5*np.sum( \
+        erf((prior_max-data)/bsqrt2) - erf((prior_min-data)/bsqrt2) \
+      + erf((prior_max-2*prior_min+data)/bsqrt2) - erf((data-prior_min)/bsqrt2) \
+      + erf((data-prior_max)/bsqrt2) - erf((prior_min-2*prior_max+data)/bsqrt2) \
+    ) / N
+    scale = 3/(norm*(np.pi*twobsqrd)**0.5)
+
+    return _alpha, _beta, scale
 
 def _compute_loglike(data, b=DEFAULT_B): #, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''

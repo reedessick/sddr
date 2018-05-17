@@ -28,6 +28,8 @@ parser.add_option('', '--num-subsets', default=utils.DEFAULT_NUM_SUBSETS, type='
 
 parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
 parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
+parser.add_option('', '--evaluation-point', default=None, type='float',
+    help='the value of log10NLTides_A0 used as the evaluation point')
 
 parser.add_option('', '--hist-bins', default=None, type='int')
 parser.add_option('', '--chist-bins', default=None, type='int')
@@ -57,6 +59,8 @@ if opts.tag:
     opts.tag = "_"+opts.tag
 
 logprior = -np.log(opts.prior_max-opts.prior_min)
+if opts.evaluation_point is None:
+    opts.evaluation_point = opts.prior_min
 
 #-------------------------------------------------
 
@@ -83,8 +87,8 @@ for foo, b, kwargs, name in [
         continue
 
     print('working on '+name)
-    logpost = foo(samples, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs)
-    logposts = [foo(subset, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs) for subset in subsets]
+    logpost = foo(opts.evaluation_point, samples, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs)
+    logposts = [foo(opts.evaluation_point, subset, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs) for subset in subsets]
 
     report = '''\
     logpost = %.6f
@@ -102,6 +106,7 @@ for foo, b, kwargs, name in [
 ### compute distribution for logpost-logprior
 print('computing quantiles')
 logpost, cdf = utils.marg_betakde(
+    opts.evaluation_point,
     samples,
     opts.kde_b_range,
     prior_min=opts.prior_min,
@@ -138,6 +143,7 @@ logEposts = []
 Elogposts = []
 for subset in subsets:
     logpost, cdf = utils.marg_betakde(
+        opts.evaluation_point,
         subset,
         opts.kde_b_range,
         prior_min=opts.prior_min,

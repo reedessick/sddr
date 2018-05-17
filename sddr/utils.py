@@ -95,17 +95,18 @@ def partition(data, num_subsets=DEFAULT_NUM_SUBSETS):
 
 #-------------------------------------------------
 
-def hist(data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+def hist(x, data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute a simple histogram and return the normalized count in the first bin
     '''
     if b is None:
-        b = max(1, int(len(data)**0.5/10))
+        b = max(10, int(len(data)**0.5/10))
 
     n, b = np.histogram(data, b, range=(prior_min, prior_max))
-    return np.log(n[0]) - np.log(b[1]-b[0]) - np.log(np.sum(n))
+    ind = int(np.interp(x, b, np.arange(len(b)))) ### do this backflip to allow for arbitrary x...
+    return np.log(n[ind]) - np.log(b[ind+1]-b[ind]) - np.log(np.sum(n))
 
-def chist(data, b=None, deg=2, fit_max=DEFAULT_FIT_MAX, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+def chist(x, data, b=None, deg=2, fit_max=DEFAULT_FIT_MAX, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute a cumulative histogram and fit it with a low-order polynomial, returning the slope at the prior_min
     '''
@@ -120,22 +121,22 @@ def chist(data, b=None, deg=2, fit_max=DEFAULT_FIT_MAX, prior_min=DEFAULT_PRIOR_
     truth = B<=fit_max
     params = np.polyfit(B[truth], c[truth], deg)
 
-    return np.log(np.sum([params[i]*(deg-i)*(prior_min)**(deg-i-1) for i in xrange(deg)]))
+    return np.log(np.sum([params[i]*(deg-i)* x**(deg-i-1) for i in xrange(deg)]))
 
-def kde(data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
-    return _compute_logkde(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max)
+def kde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
+    return _compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)
 
-def max_kde(data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, verbose=False):
+def max_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, verbose=False):
     b = optimize_bandwidth(data, min_b, max_b, rtol=rtol, verbose=verbose) ### find the ~best bandwidth
-    return _compute_logkde(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max)
+    return _compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)
 
-def marg_kde(data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, verbose=False):
+def marg_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, verbose=False):
     bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over bandwidth
-    return np.log(np.sum([weight*np.exp(_compute_logkde(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max)) for b, weight in zip(bs, weights)]))
+    return np.log(np.sum([weight*np.exp(_compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)) for b, weight in zip(bs, weights)]))
 
-def marg_betakde(data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
+def marg_betakde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
     bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over bandwidth
-    params = [_compute_betadistrib(prior_min, data, b=b, prior_min=prior_min, prior_max=prior_max) for b in bs]
+    params = [_compute_betadistrib(x, data, b=b, prior_min=prior_min, prior_max=prior_max) for b in bs]
 
     ### figure out boundaries for our initial gridding
     lq = 1./num_quantiles

@@ -12,7 +12,8 @@ import numpy as np
 
 import matplotlib
 matplotlib.use("Agg")
-from maptlolib import pyplot as plt
+from matplotlib import pyplot as plt
+plt.rcParams['text.usetex'] = True
 
 from collections import defaultdict
 
@@ -36,13 +37,13 @@ parser = OptionParser(usage=__usage__, description=__doc__)
 
 parser.add_option('-v', '--verbose', default=False, action='store_true')
 
-parser.add_option('-i', '--input', nargs=3, default=[], type='string',
-    help='the flow, spin, and path for a cdf file. \
-e.g.: --input 30 0.05 sddr.txt')
+parser.add_option('-i', '--input', nargs=2, default=[], type='string', action='append',
+    help='the label and path for a cdf file. \
+e.g.: --input label sddr.txt')
 
-parser.add_option('-a', '--annotate', nargs=4, default=[], type='string',
-    help='the flow, spin, value and label for an annotation. \
-e.g.: --input 30 0.05 -0.10 "marginalized kde"')
+parser.add_option('-a', '--annotate', nargs=2, default=[], type='string', action='append',
+    help='the label and value for an annotation. \
+e.g.: --annotate "marginalized kde" 0.3')
 
 parser.add_option('-o', '--output-dir', default='.', type='string')
 parser.add_option('-t', '--tag', default='', type='string')
@@ -50,8 +51,7 @@ parser.add_option('-t', '--tag', default='', type='string')
 opts, args = parser.parse_args()
 
 assert opts.input, 'please supply at least one --input option\n%s'%__usage__
-opts.input = [(float(flow), float(spin), path) for flow, spin, path in opts.input]
-opts.annotate = [(float(flow), float(spin), value, string) for flow, spin, value, string in opts.annotate]
+opts.annotate = [(label, float(value)) for label, value in opts.annotate]
 
 if not os.path.exists(opts.output_dir):
     os.makedirs(opts.output_dir)
@@ -61,44 +61,51 @@ if opts.tag:
 
 #-------------------------------------------------
 
-data = defaultdict(dict)
-for flow, spin, path in opts.input:
-    if opts.verbose:
-        print('reading: '+path)
-    data[flow].update({spin:np.loadtxt(path).transpose()})
-
-#---
-
-if opts.verbose:
-    print('plotting')
-
 figwidth = 8
-figheight = 4
+figheight = 10
 
 fig = plt.figure(figsize=(figwidth, figheight))
-ax = fig.gca()
+AX = plt.subplot(2,1,1)
+ax = plt.subplot(2,1,2)
 
-flows = np.array(sorted(data.keys()))
-df = np.min(np.diff(flows))*0.9
+for label, path in opts.input:
+    if opts.verbose:
+        print('reading: '+path)
+    logbayes, cdf = np.genfromtxt(path, skiprows=1).transpose()
 
-for flow in sorted(data.keys()):
-    for spin in sorted(data[flow].keys()):
-        logbayes, cdf = data[flow][spin]
-        pdf = np.gradient(cdf, np.gradient(logbayes))
+    #      flip this so we get NL - PP
+    AX.plot(-logbayes, cdf, label=label)
+    ax.plot(-logbayes, np.gradient(cdf, np.gradient(logbayes)), label=label)
 
-        #                                                        flip the sign so we plot lnB^NL_PP
-        ax.plot(np.ones_like(logbayes)*flow + df*pdf/np.max(pdf), -logbayes, linestyle=spin2linestyle[spin], color=spin2color[spin])
+ylim = ax.get_ylim()
+YLIM = AX.get_ylim()
+dx = np.diff(ax.get_xlim())*0.01
+dy = np.diff(ylim)*0.01
+DY = dy*10
+opts.annotate.sort(key=lambda l: l[1])
+for i, (label, value) in enumerate(opts.annotate):
+    ax.plot([value]*2, ylim, 'k--')
+    AX.plot([value]*2, YLIM, 'k--')
+    AX.text(value+dx, YLIM[1]-i*DY-dy, ' '+label, ha='left', va='top')
 
-for flow, spin, value, string in opts.annotate:
-    ax.plot([flow, flow+df], [value]*2, color=spin2color[spin], linestyle=spin2linestyle[spin])
-    ax.text(flow+df, value, string, color=spin2color[spin], ha='left', va='center')
+AX.set_ylim(YLIM)
+ax.set_ylim(ylim)
 
-ax.set_xlabel('$f_\mathrm{low}$ [Hz]$')
-ax.set_ylabel('$\log B^\mathrm{NL}_\mathrm{PP}$')
+plt.setp(AX.get_xticklabels(), visible=False)
+AX.set_ylabel('cdf')
+ax.set_xlabel('$\log B^\mathrm{NL}_\mathrm{PP}$')
+ax.set_ylabel('pdf')
 
+AX.grid(True, which='both')
 ax.grid(True, which='both')
+ax.legend(loc='best')
 
-figname = '%s/sddr_plot%s.png'%(opts.output_dir, opts.tag)
+plt.subplots_adjust(
+    hspace=0.01,
+    wspace=0.01,
+)
+
+figname = "%s/sddr%s.png"%(opts.output_dir, opts.tag)
 if opts.verbose:
     print('saving: '+figname)
 fig.savefig(figname)

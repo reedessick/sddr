@@ -13,8 +13,12 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
+plt.rcParams['text.usetex'] = True
 
 from optparse import OptionParser
+
+### non-standard libraries
+from sddr import utils
 
 #-------------------------------------------------
 
@@ -76,23 +80,25 @@ if opts.verbose:
     print('working on kde with fixed bandwidth')
 logkde = [utils._compute_logkde(x, samples, b=opts.kde_b, prior_min=opts.prior_min, prior_max=opts.prior_max) for x in points]
 
-ax.plot(points, np.exp(logkde), label='$b=%.3f$'%opts.kde_b)
+ax.plot(points, np.exp(logkde), label='$K(x|b=%.3f, d)$'%opts.kde_b)
 
 # find best bandwidth, compute kde
 if opts.verbose:
     print('working on kde with optimal bandwidth')
 max_b = utils.optimize_bandwidth(samples, *opts.kde_b_range, rtol=opts.kde_rtol, verbose=opts.Verbose)
+if opts.Verbose:
+    print('    max_b=%.3e'%max_b)
 max_logkde = [utils._compute_logkde(x, samples, b=max_b, prior_min=opts.prior_min, prior_max=opts.prior_max) for x in points]
 
-ax.plot(points, np.exp(max_logkde), label='$b_\mathrm{max}=%.3f'%max_b)
+ax.plot(points, np.exp(max_logkde), label='$K(x|b_\mathrm{max}=%.3f, d)$'%max_b)
 
 # marginalize over bandwidth, compute kde
 if opts.verbose:
     print('working on kde marginalized over bandwidth')
-bs, weights = marginalize_bandwidth(data, *opts.kde_b_range, rtol=opts.kde_rtol, dlogl=opts.kde_dlogl, num_points=opts.kde_num_points, verbose=opts.Verbose)
-marg_logkde = [np.log(np.sum([weight*np.exp(_compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)) for b, weight in zip(bs, weights)])) for x in points]
+bs, weights = utils.marginalize_bandwidth(samples, *opts.kde_b_range, rtol=opts.kde_rtol, dlogl=opts.kde_dlogl, num_points=opts.kde_num_points, verbose=opts.Verbose)
+marg_logkde = [np.log(np.sum([weight*np.exp(utils._compute_logkde(x, samples, b=b, prior_min=opts.prior_min, prior_max=opts.prior_max)) for b, weight in zip(bs, weights)])) for x in points]
 
-ax.plot(points, np.exp(marg_logkde), label='marg $b$')
+ax.plot(points, np.exp(marg_logkde), label='$\int db\, K(x|b;d) p(b|d)$')
 
 ### decorate
 ax.set_xlabel('$\log_{10} A_0$')

@@ -41,6 +41,7 @@ parser.add_option('', '--kde-rtol', default=utils.DEFAULT_RTOL, type='float')
 
 parser.add_option('', '--kde-dlogl', default=utils.DEFAULT_DLOGL, type='float')
 parser.add_option('', '--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type='int')
+parser.add_option('', '--kde-b-prior', default=utils.DEFAULT_B_PRIOR, type='string')
 
 parser.add_option('', '--kde-num-quantiles', default=utils.DEFAULT_NUM_QUANTILES, type='int')
 
@@ -81,7 +82,7 @@ for foo, b, kwargs, name in [
         (utils.chist, opts.chist_bins, {}, 'fit cumulative histogram'),
         (utils.kde, opts.kde_b, {}, 'kde with reflecting boundaries and b=%.3e'%opts.kde_b),
         (utils.max_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and maximized bandwidth'),
-        (utils.marg_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'dlogl':opts.kde_dlogl, 'num_points':opts.kde_num_points, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and marginalized bandwidth'),
+        (utils.marg_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'dlogl':opts.kde_dlogl, 'num_points':opts.kde_num_points, 'prior':opts.kde_b_prior, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and marginalized bandwidth'),
     ]:
     if name in opts.skip:
         continue
@@ -114,6 +115,7 @@ logpost, cdf = utils.marg_betakde(
     rtol=opts.kde_rtol,
     dlogl=opts.kde_dlogl,
     num_points=opts.kde_num_points,
+    prior=opts.kde_b_prior,
     num_quantiles=opts.kde_num_quantiles,
     verbose=opts.Verbose,
 )
@@ -151,6 +153,7 @@ for subset in subsets:
         rtol=opts.kde_rtol,
         dlogl=opts.kde_dlogl,
         num_points=opts.kde_num_points,
+        prior=opts.kde_b_prior,
         num_quantiles=opts.kde_num_quantiles,
         verbose=opts.Verbose,
     )

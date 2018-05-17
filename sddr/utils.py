@@ -24,6 +24,7 @@ DEFAULT_B = 0.1
 DEFAULT_B_RANGE = (1e-6, 1e+2)
 DEFAULT_RTOL = 1e-4
 DEFAULT_DLOGL = 10
+DEFAULT_B_PRIOR = 'log'
 
 DEFAULT_PRIOR_MIN = -10
 DEFAULT_PRIOR_MAX = -4
@@ -95,12 +96,15 @@ def partition(data, num_subsets=DEFAULT_NUM_SUBSETS):
 
 #-------------------------------------------------
 
+def _get_hist_bins(N):
+    return max(10, int(N**0.5/10))
+
 def hist(x, data, b=None, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX):
     '''
     compute a simple histogram and return the normalized count in the first bin
     '''
     if b is None:
-        b = max(10, int(len(data)**0.5/10))
+        b = _get_hist_bins(len(data))
 
     n, b = np.histogram(data, b, range=(prior_min, prior_max))
     ind = int(np.interp(x, b, np.arange(len(b)))) ### do this backflip to allow for arbitrary x...
@@ -130,12 +134,12 @@ def max_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFA
     b = optimize_bandwidth(data, min_b, max_b, rtol=rtol, verbose=verbose) ### find the ~best bandwidth
     return _compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)
 
-def marg_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, verbose=False):
-    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over bandwidth
+def marg_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, prior=DEFAULT_B_PRIOR, verbose=False):
+    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, prior=prior, verbose=verbose) ### marginalize over bandwidth
     return np.log(np.sum([weight*np.exp(_compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)) for b, weight in zip(bs, weights)]))
 
-def marg_betakde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
-    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, verbose=verbose) ### marginalize over bandwidth
+def marg_betakde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, prior=DEFAULT_B_PRIOR, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
+    bs, weights = marginalize_bandwidth(data, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, prior=prior, verbose=verbose) ### marginalize over bandwidth
     params = [_compute_betadistrib(x, data, b=b, prior_min=prior_min, prior_max=prior_max) for b in bs]
 
     ### figure out boundaries for our initial gridding
@@ -333,7 +337,7 @@ def optimize_bandwidth(data, min_b, max_b, rtol=1e-4, verbose=False):
         
     return mid_b
 
-def marginalize_bandwidth(data, min_b, max_b, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, verbose=False):
+def marginalize_bandwidth(data, min_b, max_b, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, prior=DEFAULT_B_PRIOR, verbose=False):
     '''
     perform a series of bisection searches to define a grid in bandwidth over which we iterate and compute weights
     '''
@@ -374,7 +378,12 @@ def marginalize_bandwidth(data, min_b, max_b, rtol=DEFAULT_RTOL, dlogl=DEFAULT_D
             max_b = _find_b(data, target, mid_b, max_b, rtol=rtol, verbose=verbose) # find the upper b
 
     ### we now have min_b, max_b defining the ranges we want, so let's define our grid
-    bs = np.logspace(np.log10(min_b), np.log10(max_b), num_points) ### choose logarithmic spacing -> flat prior in log(b)
+    if prior=='log':
+        bs = np.logspace(np.log10(min_b), np.log10(max_b), num_points) ### choose logarithmic spacing -> flat prior in log(b)
+    elif prior=='lin':
+        bs = np.linspace(min_b, max_b, num_points)
+    else:
+        raise ValueError, 'prior=%s not understood!'%prior
 
     weights = np.array([_compute_loglike(data, b) for b in bs]) ### NOTE: this is expensive... 
     weights = np.exp(weights-np.max(weights))

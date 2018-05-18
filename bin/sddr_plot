@@ -80,7 +80,7 @@ for label, path in opts.input:
 ylim = ax.get_ylim()
 YLIM = AX.get_ylim()
 dx = np.diff(ax.get_xlim())*0.01
-dy = np.diff(ylim)*0.01
+dy = np.diff(YLIM)*0.01
 DY = dy*10
 opts.annotate.sort(key=lambda l: l[1])
 for i, (label, value) in enumerate(opts.annotate):

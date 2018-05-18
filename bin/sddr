@@ -22,6 +22,8 @@ parser.add_option('-v', '--verbose', default=False, action='store_true')
 parser.add_option('-V', '--Verbose', default=False, action='store_true')
 
 parser.add_option('', '--field', default=utils.DEFAULT_FIELD, type='string')
+parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
+    help='used when stripping burn-in from hdf5 files')
 
 parser.add_option('', '--skip', default=[], type='string', action='append',
     help='skip the computation of this particular estimate. Note, we require an exact match of the name, so these options might be pretty long...')
@@ -68,7 +70,7 @@ if opts.evaluation_point is None:
 #-------------------------------------------------
 
 ### read in samples
-samples = utils.load(args, field=opts.field, verbose=opts.verbose)
+samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, verbose=opts.verbose)
 
 if opts.verbose:
     print('partitioning samples into %d subsets'%opts.num_subsets)

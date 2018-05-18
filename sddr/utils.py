@@ -31,10 +31,11 @@ DEFAULT_PRIOR_MAX = -4
 DEFAULT_FIT_MAX = -9
 
 DEFAULT_FIELD = 'log10NLTides_A0'
+DEFAULT_DELTALOGP = -10
 
 #-------------------------------------------------
 
-def load(paths, verbose=False, field=DEFAULT_FIELD):
+def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, verbose=False):
     """
     load in samples from files
     pulls out only log10NLTides_A0
@@ -45,7 +46,7 @@ def load(paths, verbose=False, field=DEFAULT_FIELD):
             print('reading samples from: '+path)
 
         if path.endswith('hdf5'):
-            new = load_hdf5(path, field=field, verbose=verbose)
+            new = load_hdf5(path, field=field, deltaLogP=deltaLogP, verbose=verbose)
 
         elif path.endswith('dat'):
             new = load_dat(path, field=field, verbose=verbose)
@@ -62,13 +63,14 @@ def load(paths, verbose=False, field=DEFAULT_FIELD):
         print('retained %d samples in all'%len(samples))
     return samples
 
-def load_hdf5(path, field=DEFAULT_FIELD, verbose=False):
+def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, verbose=False):
     with h5py.File(path, 'r') as file_obj:
         new = file_obj['lalinference/lalinference_mcmc/posterior_samples'][field]
     if verbose:
         print('    found %d samples'%len(new))
 
-    new = new[len(new)/2:] ### FIXME: 
+    new = new[np.max(new['logpost'])-new['logpost'] > deltaLogP] ### filter out the burn in this way...
+#    new = new[len(new)/2:] ### FIXME: 
                            ###    throw out the burn in more intelligently?
                            ###    also downsample to uncorrelated samples?
 

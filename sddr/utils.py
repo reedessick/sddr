@@ -31,11 +31,12 @@ DEFAULT_PRIOR_MAX = -4
 DEFAULT_FIT_MAX = -9
 
 DEFAULT_FIELD = 'log10NLTides_A0'
-DEFAULT_DELTALOGP = -10
+DEFAULT_DELTALOGP = 6.5
+DEFAULT_DOWNSAMPLE = 1
 
 #-------------------------------------------------
 
-def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, verbose=False):
+def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
     """
     load in samples from files
     pulls out only log10NLTides_A0
@@ -46,10 +47,10 @@ def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, verbose=False)
             print('reading samples from: '+path)
 
         if path.endswith('hdf5'):
-            new = load_hdf5(path, field=field, deltaLogP=deltaLogP, verbose=verbose)
+            new = load_hdf5(path, field=field, deltaLogP=deltaLogP, downsample=downsample, verbose=verbose)
 
         elif path.endswith('dat'):
-            new = load_dat(path, field=field, verbose=verbose)
+            new = load_dat(path, field=field, downsample=downsample, verbose=verbose)
 
         else:
             raise ValueError, 'do not know how to load: '+path
@@ -63,25 +64,36 @@ def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, verbose=False)
         print('retained %d samples in all'%len(samples))
     return samples
 
-def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, verbose=False):
+def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
     with h5py.File(path, 'r') as file_obj:
-        new = file_obj['lalinference/lalinference_mcmc/posterior_samples'][field]
+        new = file_obj['lalinference/lalinference_mcmc/posterior_samples'][...]
     if verbose:
         print('    found %d samples'%len(new))
 
-    new = new[np.max(new['logpost'])-new['logpost'] > deltaLogP] ### filter out the burn in this way...
-#    new = new[len(new)/2:] ### FIXME: 
-                           ###    throw out the burn in more intelligently?
-                           ###    also downsample to uncorrelated samples?
+    # find the first time the chain fluctuates above threshold
+    ind = np.arange(len(new))[np.max(new['logpost'])-new['logpost'] < deltaLogP]
+    if not len(ind): ### no samples survive this cut!
+        raise ValueError, 'no samples survived the deltaLogP cut!'
+    ind = ind[0] ### take the first one
+
+    # keep everything after that point
+    new = new[ind:]
+
+    ### downsample based on a fixed spacing provided by the user
+    new = new[::downsample] ### FIXME
 
     if verbose:
         print('    retained %d samples'%len(new))
-    return new
+    return new[field] ### only return the requested field
 
-def load_dat(path, field=DEFAULT_FIELD, verbose=False):
+def load_dat(path, field=DEFAULT_FIELD, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
     new = np.genfromtxt(path, names=True)[field]
     if verbose:
         print('    found %d samples'%len(new))
+
+    new = new[::downsample]
+    if verbose:
+        print('    retained %d samples'%len(new))
     return new
 
 #------------------------
@@ -136,6 +148,8 @@ def kde(x, data, b=DEFAULT_B, prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRI
 
 def max_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, verbose=False):
     b = optimize_bandwidth(data, min_b, max_b, rtol=rtol, verbose=verbose) ### find the ~best bandwidth
+    if verbose:
+        print('    max b = %.3e'%b)
     return _compute_logkde(x, data, b=b, prior_min=prior_min, prior_max=prior_max)
 
 def marg_kde(x, data, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, prior=DEFAULT_B_PRIOR, verbose=False):

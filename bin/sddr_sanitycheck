@@ -30,6 +30,8 @@ parser.add_option('-V', '--Verbose', default=False, action='store_true')
 parser.add_option('', '--field', default=utils.DEFAULT_FIELD, type='string')
 parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
     help='used when stripping burn-in from hdf5 files')
+parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
+    help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
 
 parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
 parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
@@ -64,7 +66,7 @@ opts.verbose |= opts.Verbose
 #-------------------------------------------------
 
 ### read in samples
-samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, verbose=opts.verbose)
+samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, verbose=opts.verbose)
 
 #-------------------------------------------------
 

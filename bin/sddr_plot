@@ -45,6 +45,8 @@ parser.add_option('-a', '--annotate', nargs=2, default=[], type='string', action
     help='the label and value for an annotation. \
 e.g.: --annotate "marginalized kde" 0.3')
 
+parser.add_option('', '--no-legend', default=False, action='store_true')
+
 parser.add_option('-o', '--output-dir', default='.', type='string')
 parser.add_option('-t', '--tag', default='', type='string')
 
@@ -98,7 +100,9 @@ ax.set_ylabel('pdf')
 
 AX.grid(True, which='both')
 ax.grid(True, which='both')
-ax.legend(loc='best')
+
+if not opts.no_legend:
+    ax.legend(loc='best')
 
 plt.subplots_adjust(
     hspace=0.01,

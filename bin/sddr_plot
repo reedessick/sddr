@@ -47,6 +47,14 @@ e.g.: --annotate "marginalized kde" 0.3')
 
 parser.add_option('', '--no-legend', default=False, action='store_true')
 
+parser.add_option('', '--xmin', default=None, type='float')
+parser.add_option('', '--xmax', default=None, type='float')
+parser.add_option('', '--summed', default=False, action='store_true',
+    help='plot the summed distributions instead of individual distributions. \
+Requires both --xmin and --xmax to be provided.')
+
+parser.add_option('', '--ignore-nan', default=False, action='store_true')
+
 parser.add_option('-o', '--output-dir', default='.', type='string')
 parser.add_option('-t', '--tag', default='', type='string')
 
@@ -61,6 +69,9 @@ if not os.path.exists(opts.output_dir):
 if opts.tag:
     opts.tag = "_"+opts.tag
 
+if opts.summed and ((opts.xmin is None) or (opts.xmax is None)):
+    raise ValueError('please specify both --xmin and --xmax when using --summed')
+
 #-------------------------------------------------
 
 figwidth = 8
@@ -70,14 +81,37 @@ fig = plt.figure(figsize=(figwidth, figheight))
 AX = plt.subplot(2,1,1)
 ax = plt.subplot(2,1,2)
 
+if opts.summed:
+    LOGBAYES = np.linspace(opts.xmin, opts.xmax, 1001)
+    CDF = np.zeros_like(LOGBAYES, dtype='float')
+    count = 0
+
 for label, path in opts.input:
     if opts.verbose:
         print('reading: '+path)
     logbayes, cdf = np.genfromtxt(path, skiprows=1).transpose()
 
+    if np.any(cdf!=cdf):
+        if opts.ignore_nan:
+            continue
+        else:
+            raise ValueError, 'ran into a nan!'
+
     #      flip this so we get NL - PP
-    AX.plot(-logbayes, cdf, label=label)
-    ax.plot(-logbayes, np.gradient(cdf, np.gradient(logbayes)), label=label)
+    logbayes *= -1
+
+    if opts.summed:
+        CDF += np.interp(LOGBAYES, logbayes[::-1], cdf[::-1]) ### reverse order so interpolation makes sense
+        count += 1
+
+    else:
+        AX.plot(logbayes, cdf, label=label)
+        ax.plot(logbayes, -np.gradient(cdf, np.gradient(logbayes)), label=label)
+
+if opts.summed:
+    CDF /= count
+    AX.plot(LOGBAYES, CDF)
+    ax.plot(LOGBAYES, -np.gradient(CDF, np.gradient(LOGBAYES)))
 
 ylim = ax.get_ylim()
 YLIM = AX.get_ylim()
@@ -92,6 +126,12 @@ for i, (label, value) in enumerate(opts.annotate):
 
 AX.set_ylim(YLIM)
 ax.set_ylim(ylim)
+
+if opts.xmin is not None:
+    ax.set_xlim(xmin=opts.xmin)
+if opts.xmax is not None:
+    ax.set_xlim(xmax=opts.xmax)
+AX.set_xlim(ax.get_xlim())
 
 plt.setp(AX.get_xticklabels(), visible=False)
 AX.set_ylabel('cdf')

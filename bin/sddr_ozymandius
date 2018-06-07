@@ -52,7 +52,7 @@ opts, args = parser.parse_args()
 
 assert opts.input, 'please supply at least one --input option\n%s'%__usage__
 opts.input = [(float(flow), float(spin), path) for flow, spin, path in opts.input]
-opts.annotate = [(float(flow), float(spin), value, string) for flow, spin, value, string in opts.annotate]
+opts.annotate = [(float(flow), float(spin), value, string if string!='EMPTY' else '') for flow, spin, value, string in opts.annotate]
 
 if not os.path.exists(opts.output_dir):
     os.makedirs(opts.output_dir)

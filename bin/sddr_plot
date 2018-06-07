@@ -61,7 +61,7 @@ parser.add_option('-t', '--tag', default='', type='string')
 opts, args = parser.parse_args()
 
 assert opts.input, 'please supply at least one --input option\n%s'%__usage__
-opts.annotate = [(label, float(value)) for label, value in opts.annotate]
+opts.annotate = [(label if label!='EMPTY' else '', float(value)) for label, value in opts.annotate]
 
 if not os.path.exists(opts.output_dir):
     os.makedirs(opts.output_dir)

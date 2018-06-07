@@ -22,6 +22,9 @@ parser.add_option('-v', '--verbose', default=False, action='store_true')
 parser.add_option('-V', '--Verbose', default=False, action='store_true')
 
 parser.add_option('', '--field', default=utils.DEFAULT_FIELD, type='string')
+parser.add_option('', '--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type='int',
+    help='force the code to skip the first --initial-burnin samples, and then proceed with --deltaLogP logic. \
+DEFAULT=%d'%utils.DEFAULT_INITIAL_BURNIN)
 parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
     help='used when stripping burn-in from hdf5 files')
 parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
@@ -72,7 +75,7 @@ if opts.evaluation_point is None:
 #-------------------------------------------------
 
 ### read in samples
-samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, verbose=opts.verbose)
+samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
 
 if opts.verbose:
     print('partitioning samples into %d subsets'%opts.num_subsets)

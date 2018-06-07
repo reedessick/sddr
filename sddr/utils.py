@@ -33,10 +33,11 @@ DEFAULT_FIT_MAX = -9
 DEFAULT_FIELD = 'log10NLTides_A0'
 DEFAULT_DELTALOGP = 6.5
 DEFAULT_DOWNSAMPLE = 1
+DEFAULT_INITIAL_BURNIN = 0
 
 #-------------------------------------------------
 
-def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
+def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, downsample=DEFAULT_DOWNSAMPLE, initial_burnin=DEFAULT_INITIAL_BURNIN, verbose=False):
     """
     load in samples from files
     pulls out only log10NLTides_A0
@@ -47,7 +48,7 @@ def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, downsample=DEF
             print('reading samples from: '+path)
 
         if path.endswith('hdf5'):
-            new = load_hdf5(path, field=field, deltaLogP=deltaLogP, downsample=downsample, verbose=verbose)
+            new = load_hdf5(path, field=field, deltaLogP=deltaLogP, downsample=downsample, initial_burnin=initial_burnin, verbose=verbose)
 
         elif path.endswith('dat'):
             new = load_dat(path, field=field, downsample=downsample, verbose=verbose)
@@ -64,14 +65,17 @@ def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, downsample=DEF
         print('retained %d samples in all'%len(samples))
     return samples
 
-def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
+def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, downsample=DEFAULT_DOWNSAMPLE, initial_burnin=DEFAULT_INITIAL_BURNIN, verbose=False):
     with h5py.File(path, 'r') as file_obj:
         new = file_obj['lalinference/lalinference_mcmc/posterior_samples'][...]
     if verbose:
         print('    found %d samples'%len(new))
 
     # find the first time the chain fluctuates above threshold
-    ind = np.arange(len(new))[np.max(new['logpost'])-new['logpost'] < deltaLogP]
+    ind = np.arange(len(new))
+    ind = ind[ind>=initial_burnin] ### throw away the first few burn-in points
+
+    ind = ind[np.max(new['logpost'][ind])-new['logpost'][ind] < deltaLogP] ### filter the rest by deltaLogP
     if not len(ind): ### no samples survive this cut!
         raise ValueError, 'no samples survived the deltaLogP cut!'
     ind = ind[0] ### take the first one
@@ -84,17 +88,23 @@ def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, downsampl
 
     if verbose:
         print('    retained %d samples'%len(new))
-    return new[field] ### only return the requested field
+    if field is None:
+        return new
+    else:
+        return new[field] ### only return the requested field
 
 def load_dat(path, field=DEFAULT_FIELD, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
-    new = np.genfromtxt(path, names=True)[field]
+    new = np.genfromtxt(path, names=True)
     if verbose:
         print('    found %d samples'%len(new))
 
     new = new[::downsample]
     if verbose:
         print('    retained %d samples'%len(new))
-    return new
+    if field is None:
+        return new
+    else:
+        return new[field]
 
 #------------------------
 

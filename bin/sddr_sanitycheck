@@ -131,7 +131,7 @@ if opts.verbose:
     print('working on kde with fixed bandwidth')
 logkde = [utils._compute_logkde(x, samples, weights, b=opts.kde_b, prior_min=opts.prior_min, prior_max=opts.prior_max) for x in points]
 
-ax.plot(points, np.exp(logkde), label='$K(x|b=%.3f, d)$'%opts.kde_b, alpha=0.75)
+ax.plot(points, np.exp(logkde), label='$K(x|b=%.3e, d)$'%opts.kde_b, alpha=0.75)
 
 # find best bandwidth, compute kde
 if opts.verbose:
@@ -141,7 +141,7 @@ if opts.Verbose:
     print('    max_b=%.3e'%max_b)
 max_logkde = [utils._compute_logkde(x, samples, weights, b=max_b, prior_min=opts.prior_min, prior_max=opts.prior_max) for x in points]
 
-ax.plot(points, np.exp(max_logkde), label='$K(x|b_\mathrm{max}=%.3f, d)$'%max_b, alpha=0.75)
+ax.plot(points, np.exp(max_logkde), label='$K(x|b_\mathrm{max}=%.3e, d)$'%max_b, alpha=0.75)
 
 # marginalize over bandwidth, compute kde
 if opts.verbose:

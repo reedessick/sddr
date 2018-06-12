@@ -166,6 +166,11 @@ plt.setp(ax.get_yticklabels(), visible=False)
 ax.grid(True, which='both')
 ax.legend(loc='best')
 
+if opts.plot_max is not None:
+    ax.set_xlim(xmax=opts.plot_max)
+if opts.plot_min is not None:
+    ax.set_xlim(xmin=opts.plot_min)
+
 ### save
 figname = '%s/sddr_sanitycheck%s.png'%(opts.output_dir, opts.tag)
 if opts.verbose:

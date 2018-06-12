@@ -65,6 +65,9 @@ parser.add_option('', '--kde-dlogl', default=utils.DEFAULT_DLOGL, type='float')
 parser.add_option('', '--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type='int')
 parser.add_option('', '--kde-b-prior', default=utils.DEFAULT_B_PRIOR, type='string')
 
+parser.add_option('', '--plot-min', default=None, type='float')
+parser.add_option('', '--plot-max', default=None, type='float')
+
 parser.add_option('-o', '--output-dir', default='.', type='string')
 parser.add_option('-t', '--tag', default='', type='string')
 
@@ -115,7 +118,7 @@ weights = weights[truth]
 #-------------------------------------------------
 
 ### generate sample points...
-points = np.linspace(opts.prior_min, opts.prior_max, opts.num_points)
+points = np.linspace(opts.plot_min if opts.plot_min is not None else opts.prior_min, opts.plot_max if opts.plot_max is not None else opts.prior_max, opts.num_points)
 
 fig = plt.figure()
 ax = fig.gca()

@@ -36,28 +36,39 @@ def b2logpost(points, samples, weights, b, prior_min, prior_max):
     logpost = (logpost-m) - np.log(np.trapz(np.exp(logpost-m), points)) ### normalized
     return logpost
 
-def fixed_b(points, samples, weights, b, prior_min, prior_max, confidence=[], ax=None):
+def fixed_b(points, samples, weights, b, prior_min, prior_max, confidence=[], verbose=True, ax=None):
     logpost = b2logpost(points, samples, weights, b, prior_min, prior_max)
-    report(points, logpost, -np.log(np.exp(prior_max)-np.exp(prior_min)), confidence)
+    logprior = -np.log(np.exp(prior_max)-np.exp(prior_min))
+    if verbose:
+        report(points, logpost, logprior, confidence)
     if ax is not None:
         ax.plot(points, np.exp(logpost), color='g', label='fixed b')
+    return logpost[0]-logprior
 
-def max_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confidence=[], rtol=1e-4, verbose=False, ax=None):
+def max_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confidence=[], rtol=1e-4, verbose=True, Verbose=False, ax=None):
     b = utils.optimize_bandwidth(samples, weights, min_b, max_b, rtol=rtol, verbose=verbose)
+    if verbose:
+        print('    b=%.6e'%b)
     logpost = b2logpost(points, samples, weights, b, prior_min, prior_max)
-    report(points, logpost, -np.log(np.exp(prior_max)-np.exp(prior_min)), confidence)
+    logprior = -np.log(np.exp(prior_max)-np.exp(prior_min))
+    if verbose:
+        report(points, logpost, logprior, confidence)
     if ax is not None:
         ax.plot(points, np.exp(logpost), color='r', label='max b')
+    return logpost[0]-logprior
 
-def marg_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confidence=[], rtol=1e-4, dlogl=8, num_points=100, prior='lin', verbose=False, ax=None):
-    bs, ws = utils.marginalize_bandwidth(samples, weights, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, prior=prior, verbose=verbose)
+def marg_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confidence=[], rtol=1e-4, dlogl=8, num_points=100, prior='lin', verbose=True, Verbose=False, ax=None):
+    bs, ws = utils.marginalize_bandwidth(samples, weights, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, prior=prior, verbose=Verbose)
     logpost = np.zeros_like(points)
     for b, w in zip(bs, ws):
         logpost += w*np.exp(b2logpost(points, samples, weights, b, prior_min, prior_max))
     logpost = np.log(logpost)
-    report(points, logpost, -np.log(np.exp(prior_max)-np.exp(prior_min)), confidence)
+    logprior = -np.log(np.exp(prior_max)-np.exp(prior_min))
+    if verbose:
+        report(points, logpost, logprior, confidence)
     if ax is not None:
         ax.plot(points, np.exp(logpost), color='c', label='marg b')
+    return logpost[0]-logprior
 
 #-------------------------------------------------
 
@@ -131,7 +142,7 @@ points = np.linspace(10**opts.prior_min, min(2*10**np.max(samples), 10**opts.pri
 if opts.run_subsamp:
     if opts.verbose:
         print('partitioning samples into %d subsets'%opts.num_subsets)
-    subsets = utils.partition(samples, num_subsets=opts.num_subsets)
+    subsets = utils.partition(samples, weights, num_subsets=opts.num_subsets)
     sqrtnum_subsets = opts.num_subsets**0.5
 
 #-------------------------------------------------
@@ -148,61 +159,76 @@ fixed_b(points, samples, weights, opts.kde_b, opts.prior_min, opts.prior_max, co
 if opts.run_subsamp:
     FIG = plt.figure()
     AX = FIG.gca()
+    ans = []
     for subsamp, subweight in subsets:
-        fixed_b(points, subsamp, subweights, opts.kde_b, opts.prior_min, opts.prior_max, confidence=opts.confidence, ax=AX)
+        ans.append(fixed_b(points, subsamp, subweight, opts.kde_b, opts.prior_min, opts.prior_max, confidence=opts.confidence, ax=AX, verbose=opts.Verbose))
     AX.set_xlabel('A0')
-    plt.setp(AX.get_yticklabels(), verbose=False)
+    plt.setp(AX.get_yticklabels(), visible=False)
     AX.grid(True, which='both')
+    AX.set_xlim(xmin=points[0], xmax=points[-1])
     figname = '%s/sddr_fancy-fixed_b%s.png'%(opts.output_dir, opts.tag)
     if opts.verbose:
         print('saving: '+figname)
     FIG.savefig(figname)
     plt.close(FIG)
+    print('''\
+mean(logpost - logprior) = %.6f
+stdv(logpost - logprior) = %.6f'''%(np.mean(ans), np.std(ans)))
 
 # kde with maximized bandwidth
 if opts.verbose:
     print('working on kde with reflecting boundaries and maximized bandwidth')
-max_b(points, samples, weights, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, verbose=opts.Verbose, ax=ax)
+max_b(points, samples, weights, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, Verbose=opts.Verbose, ax=ax)
 if opts.run_subsamp:
     FIG = plt.figure()
     AX = FIG.gca()
+    ans = []
     for subsamp, subweight in subsets:
-        max_b(points, subsamp, subweight, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, verbose=opts.Verbose, ax=AX)
+        ans.append( max_b(points, subsamp, subweight, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, verbose=opts.Verbose, ax=AX) )
     AX.set_xlabel('A0')
-    plt.setp(AX.get_yticklabels(), verbose=False)
+    plt.setp(AX.get_yticklabels(), visible=False)
     AX.grid(True, which='both')
+    AX.set_xlim(xmin=points[0], xmax=points[-1])
     figname = '%s/sddr_fancy-max_b%s.png'%(opts.output_dir, opts.tag)
     if opts.verbose:
         print('saving: '+figname)
     FIG.savefig(figname)
     plt.close(FIG)
+    print('''\
+mean(logpost - logprior) = %.6f
+stdv(logpost - logprior) = %.6f'''%(np.mean(ans), np.std(ans)))
 
 # kde with marginalized bandwidth
 if opts.verbose:
     print('working on kde with reflecting boundaries and marginalized bandwidth')
-marg_b(points, samples, weights, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, dlogl=opts.kde_dlogl, num_points=opts.kde_num_points, prior=opts.kde_b_prior, verbose=opts.Verbose, ax=ax)
+marg_b(points, samples, weights, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, dlogl=opts.kde_dlogl, num_points=opts.kde_num_points, prior=opts.kde_b_prior, Verbose=opts.Verbose, ax=ax)
 if opts.run_subsamp:
     FIG = plt.figure()
     AX = FIG.gca()
+    ans = []
     for subsamp, subweight in subsets:
-        marg_b(points, subsamp, subweight, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, dlogl=opts.kde_dlogl, num_points=opts.kde_num_points, prior=opts.kde_b_prior, verbose=opts.Verbose, ax=AX)
+        ans.append(marg_b(points, subsamp, subweight, opts.kde_b_range, opts.prior_min, opts.prior_max, confidence=opts.confidence, rtol=opts.kde_rtol, dlogl=opts.kde_dlogl, num_points=opts.kde_num_points, prior=opts.kde_b_prior, verbose=opts.Verbose, ax=AX))
     AX.set_xlabel('A0')
-    plt.setp(AX.get_yticklabels(), verbose=False)
+    plt.setp(AX.get_yticklabels(), visible=False)
     AX.grid(True, which='both')
+    AX.set_xlim(xmin=points[0], xmax=points[-1])
     figname = '%s/sddr_fancy-marg_b%s.png'%(opts.output_dir, opts.tag)
     if opts.verbose:
         print('saving: '+figname)
     FIG.savefig(figname)
     plt.close(FIG)
+    print('''\
+mean(logpost - logprior) = %.6f
+stdv(logpost - logprior) = %.6f'''%(np.mean(ans), np.std(ans)))
 
 # save the comparison figure
 ax.plot(points, np.exp(logprior)*np.ones_like(points), 'k-', label='prior')
 
 ax.set_xlabel('A0')
-plt.setp(ax.get_yticklabels(), verbose=False)
+plt.setp(ax.get_yticklabels(), visible=False)
 ax.grid(True, which='both')
 ax.legend(loc='best')
-
+ax.set_xlim(xmin=points[0], xmax=points[-1])
 figname = '%s/sddr_fancy%s.png'%(opts.output_dir, opts.tag)
 if opts.verbose:
     print('saving: '+figname)

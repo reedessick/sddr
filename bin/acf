@@ -1,0 +1,142 @@
+#!/usr/bin/env python
+
+__usage__ = "acf [--options] samples.hdf5 [samples.hdf5 samples.hdf5 ...]"
+__doc__ = "an executable that computes things"
+__author__ = "reed.essick@ligo.org"
+
+#-------------------------------------------------
+
+import os
+import numpy as np
+
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib import pyplot as plt
+
+from optparse import OptionParser
+
+### non-standard libraries
+from sddr import utils
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__doc__)
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_option('', '--field', default=utils.DEFAULT_FIELD, type='string',
+    help='the field selected for the 1D marginalized KDE. \
+DEFAULT='+utils.DEFAULT_FIELD)
+parser.add_option('', '--exponentiate-field', default=False, action='store_true',
+    help='exponentiate the values in --field and make a KDE of those.')
+parser.add_option('', '--exponentiate10-field', default=False, action='store_true',
+    help='exponentiate the values in --field and make a KDE of those.')
+
+parser.add_option('', '--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type='int',
+    help='force the code to skip the first --initial-burnin samples, and then proceed with --deltaLogP logic. \
+DEFAULT=%d'%utils.DEFAULT_INITIAL_BURNIN)
+parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
+    help='used when stripping burn-in from hdf5 files')
+parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
+    help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
+
+parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
+parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
+
+parser.add_option('', '--xmax', default=None, type='float')
+
+parser.add_option('-o', '--output-dir', default='.', type='string')
+parser.add_option('-t', '--tag', default='', type='string')
+
+opts, args = parser.parse_args()
+assert args, 'please supply at least 1 input argument\n%s'%__usage__
+assert not (opts.exponentiate_field and opts.exponentiate10_field), 'please supply either --exponentiate-field or --exponentiate10-field, but not both\n%s'%__usage__
+
+opts.verbose |= opts.Verbose
+
+if not os.path.exists(opts.output_dir):
+    os.makedirs(opts.output_dir)
+
+if opts.tag:
+    opts.tag = "_"+opts.tag
+
+#-------------------------------------------------
+
+### read in samples
+samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
+if opts.exponentiate_field:
+    if opts.verbose:
+        print('exponentiating samples')
+    samples = np.exp(samples)
+elif opts.exponentiate10_field:
+    if opts.verbose:
+        print('exponentiating10 samples')
+    samples = 10**samples
+
+### check prior bounds
+truth = (opts.prior_min <=samples)*(samples<=opts.prior_max)
+samples = samples[truth]
+
+#-------------------------------------------------
+
+if opts.verbose:
+    print('estimating the autocorrelation function')
+fft_samples = np.fft.fft(samples-np.mean(samples)) ### compute FFT of zero-mean'd samples
+acf = np.fft.ifft(fft_samples.real**2 + fft_samples.imag**2) ### estimate autocorrelation function
+acf /= acf[0] ### normalize 
+
+line = np.arange(len(acf))
+
+if opts.verbose:
+    print('plotting acf')
+fig = plt.figure()
+ax = fig.gca()
+
+ax.plot(acf)
+
+ax.set_xlabel('mcmc steps')
+ax.set_ylabel('acf estimate: '+opts.field)
+
+ax.grid(True, which='both')
+
+if opts.xmax is not None:
+    ax.set_xlim(xmax=opts.xmax)
+    ax.set_ylim(ymin=np.min(acf[line<=opts.xmax]), ymax=np.max(acf[line<=opts.xmax]))
+
+figname = '%s/acf-%s%s.png'%(opts.output_dir, opts.field, opts.tag)
+if opts.verbose:
+    print('saving: '+figname)
+fig.savefig(figname)
+plt.close(fig)
+
+#------------------------
+
+if opts.verbose:
+    print('plotting cumulative acf')
+fig = plt.figure()
+ax = fig.gca()
+
+cacf = np.array([acf[0]]+list(acf[0]+2*np.cumsum(acf[1:])))
+ax.plot(cacf)
+ax.plot(line, line)
+
+ax.set_xlabel('mcmc steps')
+ax.set_ylabel('cumulative acf estimate: '+opts.field)
+
+ax.grid(True, which='both')
+
+if opts.xmax is not None:
+    ax.set_xlim(xmax=opts.xmax)
+    ax.set_ylim(ymin=np.min(cacf[line<=opts.xmax]), ymax=np.max(cacf[line<=opts.xmax]))
+
+x = line[line>=cacf]
+if len(x):
+    ax.plot([x[0]]*2, ax.get_ylim(), color='k')
+    ax.text(x[0], ax.get_ylim()[0], '%d'%x[0], ha='left', va='bottom')
+
+figname = '%s/cacf-%s%s.png'%(opts.output_dir, opts.field, opts.tag)
+if opts.verbose:
+    print('saving: '+figname)
+fig.savefig(figname)
+plt.close(fig)

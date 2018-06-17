@@ -166,6 +166,23 @@ def marg_kde(x, data, weights, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prio
     bs, ws = marginalize_bandwidth(data, weights, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, prior=prior, verbose=verbose) ### marginalize over bandwidth
     return np.log(np.sum([w*np.exp(_compute_logkde(x, data, weights, b=b, prior_min=prior_min, prior_max=prior_max)) for b, w in zip(bs, ws)]))
 
+def max_betakde(x, data, weights, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
+    b = optimize_bandwidth(data, weights, min_b, max_b, rtol=rtol, verbose=verbose) ### find the ~best bandwidth
+    if verbose:
+        print('    max b = %.3e'%b)
+    _alpha, _beta, _scale = _compute_betadistrib(x, data, weights, b=b, prior_min=prior_min, prior_max=prior_max)
+
+    lq = 1./num_quantiles
+    low = np.log(beta.ppf(lq, _alpha, _beta)*_scale)
+    hgh = np.log(_scale)
+    logkde = np.linspace(low, hgh, num_quantiles) ### our gridding in logkde
+    cdf = _compute_cdf(logkde, [(_alpha, _beta, _scale)], [1])
+
+    logkde = np.interp(np.linspace(lq, 1.-lq, num_quantiles), cdf, logkde) ### interpolate to approximate even sampling in probability distrib
+    cdf = _compute_cdf(logkde, [(_alpha, _beta, _scale)], [1]) ### recompute at the new grid placement
+
+    return logkde, cdf
+
 def marg_betakde(x, data, weights, (min_b, max_b), prior_min=DEFAULT_PRIOR_MIN, prior_max=DEFAULT_PRIOR_MAX, rtol=DEFAULT_RTOL, dlogl=DEFAULT_DLOGL, num_points=DEFAULT_NUM_POINTS, prior=DEFAULT_B_PRIOR, num_quantiles=DEFAULT_NUM_QUANTILES, verbose=False):
     bs, ws = marginalize_bandwidth(data, weights, min_b, max_b, rtol=rtol, dlogl=dlogl, num_points=num_points, prior=prior, verbose=verbose) ### marginalize over bandwidth
     params = [_compute_betadistrib(x, data, weights, b=b, prior_min=prior_min, prior_max=prior_max) for b in bs]

@@ -66,6 +66,9 @@ parser.add_option('', '--kde-dlogl', default=utils.DEFAULT_DLOGL, type='float')
 parser.add_option('', '--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type='int')
 parser.add_option('', '--kde-b-prior', default=utils.DEFAULT_B_PRIOR, type='string')
 
+parser.add_option('', '--kde-beta-method', default='marg', type='string',
+    help='either "marg" or "max" to control how we choose the bandwidth for sampling error fit to beta-distribution. \
+DEFAULT=marg')
 parser.add_option('', '--kde-num-quantiles', default=utils.DEFAULT_NUM_QUANTILES, type='int')
 
 parser.add_option('-o', '--output-dir', default='.', type='string')
@@ -73,8 +76,8 @@ parser.add_option('-t', '--tag', default='', type='string')
 
 opts, args = parser.parse_args()
 assert args, 'please supply at least 1 input argument\n%s'%__usage__
-assert not (opts.exponentiate_field and opts.exponentiate10_field), 'please supply either --exponentiate-field or --exponentiate10-field, but not both\n%s'%__usage__)
-assert not (opts.exponentiate_weight_field and opts.exponentiate10_weight_field), 'please supply either --exponentiate-weight-field or --exponentiate10-weight-field, but not both\n%s'%__usage__)
+assert not (opts.exponentiate_field and opts.exponentiate10_field), 'please supply either --exponentiate-field or --exponentiate10-field, but not both\n%s'%__usage__
+assert not (opts.exponentiate_weight_field and opts.exponentiate10_weight_field), 'please supply either --exponentiate-weight-field or --exponentiate10-weight-field, but not both\n%s'%__usage__
 
 opts.verbose |= opts.Verbose
 
@@ -122,7 +125,7 @@ weights = weights[truth]
 
 if opts.verbose:
     print('partitioning samples into %d subsets'%opts.num_subsets)
-subsets = utils.partition(samples, num_subsets=opts.num_subsets)
+subsets = utils.partition(samples, weights, num_subsets=opts.num_subsets)
 
 sqrtnum_subsets = opts.num_subsets**0.5
 
@@ -158,20 +161,36 @@ for foo, b, kwargs, name in [
 
 ### compute distribution for logpost-logprior
 print('computing quantiles')
-logpost, cdf = utils.marg_betakde(
-    opts.evaluation_point,
-    samples,
-    weights,
-    opts.kde_b_range,
-    prior_min=opts.prior_min,
-    prior_max=opts.prior_max,
-    rtol=opts.kde_rtol,
-    dlogl=opts.kde_dlogl,
-    num_points=opts.kde_num_points,
-    prior=opts.kde_b_prior,
-    num_quantiles=opts.kde_num_quantiles,
-    verbose=opts.Verbose,
-)
+if opts.kde_beta_method=='marg':
+    logpost, cdf = utils.marg_betakde(
+        opts.evaluation_point,
+        samples,
+        weights,
+        opts.kde_b_range,
+        prior_min=opts.prior_min,
+        prior_max=opts.prior_max,
+        rtol=opts.kde_rtol,
+        dlogl=opts.kde_dlogl,
+        num_points=opts.kde_num_points,
+        prior=opts.kde_b_prior,
+        num_quantiles=opts.kde_num_quantiles,
+        verbose=opts.Verbose,
+    )
+elif opts.kde_beta_method=='max':
+    logpost, cdf = utils.max_betakde(
+        opts.evaluation_point,
+        samples,
+        weights,
+        opts.kde_b_range,
+        prior_min=opts.prior_min,
+        prior_max=opts.prior_max,
+        rtol=opts.kde_rtol,
+        num_quantiles=opts.kde_num_quantiles,
+        verbose=opts.Verbose,
+    )
+else:
+    raise ValueError('--kde-beta-method=%s not understood'%opts.kde_beta_method)
+
 ### save a representation of the whole process for logpost(prior_min) to disk
 path = os.path.join(opts.output_dir, 'sddr%s.txt'%opts.tag)
 if opts.verbose:
@@ -197,20 +216,36 @@ logEpost = np.log(np.trapz(pdf*post, post)/np.trapz(pdf, post))
 logEposts = []
 Elogposts = []
 for subsamp, subweight in subsets:
-    logpost, cdf = utils.marg_betakde(
-        opts.evaluation_point,
-        subsamp,
-        subweight,
-        opts.kde_b_range,
-        prior_min=opts.prior_min,
-        prior_max=opts.prior_max,
-        rtol=opts.kde_rtol,
-        dlogl=opts.kde_dlogl,
-        num_points=opts.kde_num_points,
-        prior=opts.kde_b_prior,
-        num_quantiles=opts.kde_num_quantiles,
-        verbose=opts.Verbose,
-    )
+    if opts.kde_beta_method=='marg':
+        logpost, cdf = utils.marg_betakde(
+            opts.evaluation_point,
+            subsamp,
+            subweight,
+            opts.kde_b_range,
+            prior_min=opts.prior_min,
+            prior_max=opts.prior_max,
+            rtol=opts.kde_rtol,
+            dlogl=opts.kde_dlogl,
+            num_points=opts.kde_num_points,
+            prior=opts.kde_b_prior,
+            num_quantiles=opts.kde_num_quantiles,
+            verbose=opts.Verbose,
+        )
+    elif opts.kde_beta_method=='max':
+        logpost, cdf = utils.max_betakde(
+            opts.evaluation_point,
+            subsamp,
+            subweight,
+            opts.kde_b_range,
+            prior_min=opts.prior_min,
+            prior_max=opts.prior_max,
+            rtol=opts.kde_rtol,
+            num_quantiles=opts.kde_num_quantiles,
+            verbose=opts.Verbose,
+        )
+    else:
+        raise ValueError('--kde-beta-method=%s not understood'%opts.kde_beta_method)
+
     post = np.exp(logpost)
     pdf = np.gradient(cdf, np.gradient(post))
     norm = np.trapz(pdf, post)

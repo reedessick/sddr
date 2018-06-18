@@ -1,0 +1,294 @@
+#!/usr/bin/env python
+
+__usage__ = "sddr_stacked [--options] samples.hdf5,samples.hdf5,...,samples.hdf5 [samples.hdf5,...,samples.hdf5 samples.hdf5,...,samples.hdf5 ...]"
+__doc__ = "an executable that computes the equivalent of sddr, but with stacked events"
+__author__ = "reed.essick@ligo.org"
+
+#-------------------------------------------------
+
+import os
+import numpy as np
+
+from optparse import OptionParser
+
+### non-standard libraries
+from sddr import utils
+
+#-------------------------------------------------
+
+parser = OptionParser(usage=__usage__, description=__doc__)
+
+parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_option('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_option('', '--field', default=utils.DEFAULT_FIELD, type='string',
+    help='the field selected for the 1D marginalized KDE. \
+DEFAULT='+utils.DEFAULT_FIELD)
+parser.add_option('', '--exponentiate-field', default=False, action='store_true',
+    help='exponentiate the values in --field and make a KDE of those.')
+parser.add_option('', '--exponentiate10-field', default=False, action='store_true',
+    help='exponentiate the values in --field and make a KDE of those.')
+
+parser.add_option('', '--weight-field', default=None, type='string',
+    help='if supplied, read values corresponding to this field and use a weights within KDE')
+parser.add_option('', '--exponentiate-weight-field', default=False, action='store_true',
+    help='exponentiate the values in --weight-field if supplied and use those as the weights.')
+parser.add_option('', '--exponentiate10-weight-field', default=False, action='store_true',
+    help='exponentiate the values in --weight-field if supplied and use those as the weights.')
+
+parser.add_option('', '--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type='int',
+    help='force the code to skip the first --initial-burnin samples, and then proceed with --deltaLogP logic. \
+DEFAULT=%d'%utils.DEFAULT_INITIAL_BURNIN)
+parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
+    help='used when stripping burn-in from hdf5 files')
+parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
+    help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
+
+parser.add_option('', '--skip', default=[], type='string', action='append',
+    help='skip the computation of this particular estimate. Note, we require an exact match of the name, so these options might be pretty long...')
+
+parser.add_option('', '--num-subsets', default=utils.DEFAULT_NUM_SUBSETS, type='int')
+
+parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
+parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
+parser.add_option('', '--evaluation-point', default=None, type='float',
+    help='the value of log10NLTides_A0 used as the evaluation point')
+
+parser.add_option('', '--hist-bins', default=None, type='int')
+
+parser.add_option('', '--kde-b', default=utils.DEFAULT_B, type='float')
+
+parser.add_option('', '--kde-b-range', nargs=2, default=utils.DEFAULT_B_RANGE, type='float')
+parser.add_option('', '--kde-rtol', default=utils.DEFAULT_RTOL, type='float')
+
+parser.add_option('', '--kde-dlogl', default=utils.DEFAULT_DLOGL, type='float')
+parser.add_option('', '--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type='int')
+parser.add_option('', '--kde-b-prior', default=utils.DEFAULT_B_PRIOR, type='string')
+
+parser.add_option('', '--kde-beta-method', default='marg', type='string',
+    help='either "marg" or "max" to control how we choose the bandwidth for sampling error fit to beta-distribution. \
+DEFAULT=marg')
+parser.add_option('', '--kde-num-quantiles', default=utils.DEFAULT_NUM_QUANTILES, type='int')
+
+parser.add_option('-o', '--output-dir', default='.', type='string')
+parser.add_option('-t', '--tag', default='', type='string')
+
+opts, args = parser.parse_args()
+assert args, 'please supply at least 1 input argument\n%s'%__usage__
+assert not (opts.exponentiate_field and opts.exponentiate10_field), 'please supply either --exponentiate-field or --exponentiate10-field, but not both\n%s'%__usage__
+assert not (opts.exponentiate_weight_field and opts.exponentiate10_weight_field), 'please supply either --exponentiate-weight-field or --exponentiate10-weight-field, but not both\n%s'%__usage__
+
+opts.verbose |= opts.Verbose
+
+if not os.path.exists(opts.output_dir):
+    os.makedirs(opts.output_dir)
+
+if opts.tag:
+    opts.tag = "_"+opts.tag
+
+logprior = -np.log(opts.prior_max-opts.prior_min)
+if opts.evaluation_point is None:
+    opts.evaluation_point = opts.prior_min
+
+#-------------------------------------------------
+
+raise NotImplementedError('WRITE ME')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### read in samples
+samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
+if opts.exponentiate_field:
+    if opts.verbose:
+        print('exponentiating samples')
+    samples = np.exp(samples)
+elif opts.exponentiate10_field:
+    if opts.verbose:
+        print('exponentiating10 samples')
+    samples = 10**samples
+
+if opts.weight_field:
+    weights = utils.load(args, field=opts.weight_field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
+    if opts.exponentiate_weight_field:
+        if opts.verbose:
+            print('exponentiating weights')
+        weights = np.exp(weights)
+    elif opts.exponentiate10_weight_field:
+        if opts.verbose:
+            print('exponentiating10 weights')
+        weights = 10**weights
+else:
+    weights = np.ones_like(samples, dtype='float')
+weights /= np.sum(weights)
+
+### check prior bounds
+truth = (opts.prior_min <=samples)*(samples<=opts.prior_max)
+samples = samples[truth]
+weights = weights[truth]
+
+if opts.verbose:
+    print('partitioning samples into %d subsets'%opts.num_subsets)
+subsets = utils.partition(samples, weights, num_subsets=opts.num_subsets)
+
+sqrtnum_subsets = opts.num_subsets**0.5
+
+#-------------------------------------------------
+
+### iterate and compute point estimates for various methods
+for foo, b, kwargs, name in [
+        (utils.hist, opts.hist_bins, {}, 'raw histogram'),
+        (utils.kde, opts.kde_b, {}, 'kde with reflecting boundaries and b=%.3e'%opts.kde_b),
+        (utils.max_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and maximized bandwidth'),
+        (utils.marg_kde, opts.kde_b_range, {'rtol':opts.kde_rtol, 'dlogl':opts.kde_dlogl, 'num_points':opts.kde_num_points, 'prior':opts.kde_b_prior, 'verbose':opts.Verbose}, 'kde with reflecting boundaries and marginalized bandwidth'),
+    ]:
+    if name in opts.skip:
+        continue
+
+    print('working on '+name)
+    logpost = foo(opts.evaluation_point, samples, weights, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs)
+    logposts = [foo(opts.evaluation_point, subsamp, subweight, b, prior_min=opts.prior_min, prior_max=opts.prior_max, **kwargs) for subsamp, subweight in subsets]
+
+    report = '''\
+    logpost = %.6f
+    logprior = %.6f
+    logpost - logpost = %.6f'''%(logpost, logprior, logpost-logprior)
+    if opts.Verbose:
+        for i, lp in enumerate(logposts):
+            report += '''
+        subset %02d (%04d samples) logpost - logprior = %.6f'''%(i+1, len(subsets[i]), lp-logprior)
+    report += '''
+    mean(logpost - logprior) = %.6f
+    stdv(logpost - logprior) = %.6f'''%(np.mean(logposts)-logprior, np.std(logposts)/sqrtnum_subsets)
+    print(report)
+
+### compute distribution for logpost-logprior
+print('computing quantiles')
+if opts.kde_beta_method=='marg':
+    logpost, cdf = utils.marg_betakde(
+        opts.evaluation_point,
+        samples,
+        weights,
+        opts.kde_b_range,
+        prior_min=opts.prior_min,
+        prior_max=opts.prior_max,
+        rtol=opts.kde_rtol,
+        dlogl=opts.kde_dlogl,
+        num_points=opts.kde_num_points,
+        prior=opts.kde_b_prior,
+        num_quantiles=opts.kde_num_quantiles,
+        verbose=opts.Verbose,
+    )
+elif opts.kde_beta_method=='max':
+    logpost, cdf = utils.max_betakde(
+        opts.evaluation_point,
+        samples,
+        weights,
+        opts.kde_b_range,
+        prior_min=opts.prior_min,
+        prior_max=opts.prior_max,
+        rtol=opts.kde_rtol,
+        num_quantiles=opts.kde_num_quantiles,
+        verbose=opts.Verbose,
+    )
+else:
+    raise ValueError('--kde-beta-method=%s not understood'%opts.kde_beta_method)
+
+### save a representation of the whole process for logpost(prior_min) to disk
+path = os.path.join(opts.output_dir, 'sddr%s.txt'%opts.tag)
+if opts.verbose:
+    print('writing quantiles to: '+path)
+with open(path, 'w') as file_obj:
+    print >> file_obj, 'logpost-logprior cdf'
+    template = '%.6f %.6f'
+    for tup in zip(logpost-logprior, cdf):
+        print >> file_obj, template%tup
+
+### estimate the expected value of the posterior at this point, and then report the log of that.
+### This is essentially what all the other estimators are doing, so we should mimic that
+### NOTE: log(E[post]) will "bias" our inference to larger values compared to E[log(post)], so we report both
+
+post = np.exp(logpost)
+pdf = np.gradient(cdf, np.gradient(post))
+norm = np.trapz(pdf, post)
+
+Elogpost = np.trapz(pdf*logpost, post)/np.trapz(pdf, post)
+logEpost = np.log(np.trapz(pdf*post, post)/np.trapz(pdf, post))
+
+### repeat for subsets, without saving to disk
+logEposts = []
+Elogposts = []
+for subsamp, subweight in subsets:
+    if opts.kde_beta_method=='marg':
+        logpost, cdf = utils.marg_betakde(
+            opts.evaluation_point,
+            subsamp,
+            subweight,
+            opts.kde_b_range,
+            prior_min=opts.prior_min,
+            prior_max=opts.prior_max,
+            rtol=opts.kde_rtol,
+            dlogl=opts.kde_dlogl,
+            num_points=opts.kde_num_points,
+            prior=opts.kde_b_prior,
+            num_quantiles=opts.kde_num_quantiles,
+            verbose=opts.Verbose,
+        )
+    elif opts.kde_beta_method=='max':
+        logpost, cdf = utils.max_betakde(
+            opts.evaluation_point,
+            subsamp,
+            subweight,
+            opts.kde_b_range,
+            prior_min=opts.prior_min,
+            prior_max=opts.prior_max,
+            rtol=opts.kde_rtol,
+            num_quantiles=opts.kde_num_quantiles,
+            verbose=opts.Verbose,
+        )
+    else:
+        raise ValueError('--kde-beta-method=%s not understood'%opts.kde_beta_method)
+
+    post = np.exp(logpost)
+    pdf = np.gradient(cdf, np.gradient(post))
+    norm = np.trapz(pdf, post)
+
+    Elogposts.append(np.trapz(pdf*logpost, post)/norm)
+    logEposts.append(np.log(np.trapz(pdf*post, post)/norm))
+
+report = '''\
+    logE[post] = %.6f
+    E[logpost] = %.6f
+    logprior = %.6f
+    logE[post] - logpost = %.6f
+    E[logpost] - logpost = %.6f'''%(logEpost, Elogpost, logprior, logEpost-logprior, Elogpost-logprior)
+if opts.Verbose:
+    for i, (lEp, Elp) in enumerate(zip(logEposts, Elogposts)):
+        report += '''
+        subset %02d (%04d samples)
+            logE[post] - logprior = %.6f
+            E[logpost] - logprior = %.6f'''%(i+1, len(subsets[i]), lEp-logprior, Elp-logprior, )
+report += '''
+    mean(logE[post] - logprior) = %.6f
+    stdv(logE[post] - logprior) = %.6f
+    mean(E[logpost] - logprior) = %.6f
+    stdv(E[logpost] - logprior) = %.6f'''%(np.mean(logEposts)-logprior, np.std(logEposts)/sqrtnum_subsets, np.mean(Elogposts)-logprior, np.std(Elogposts)/sqrtnum_subsets)
+print(report)

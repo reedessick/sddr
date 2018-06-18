@@ -74,14 +74,14 @@ def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, downsampl
     # find the first time the chain fluctuates above threshold
     ind = np.arange(len(new))
     ind = ind[ind>=initial_burnin] ### throw away the first few burn-in points
+    if len(ind): 
+        ind = ind[np.max(new['logpost'][ind])-new['logpost'][ind] < deltaLogP] ### filter the rest by deltaLogP
+        if not len(ind): ### no samples survive this cut!
+            raise ValueError, 'no samples survived the deltaLogP cut!'
+        ind = ind[0] ### take the first one
 
-    ind = ind[np.max(new['logpost'][ind])-new['logpost'][ind] < deltaLogP] ### filter the rest by deltaLogP
-    if not len(ind): ### no samples survive this cut!
-        raise ValueError, 'no samples survived the deltaLogP cut!'
-    ind = ind[0] ### take the first one
-
-    # keep everything after that point
-    new = new[ind:]
+        # keep everything after that point
+        new = new[ind:]
 
     ### downsample based on a fixed spacing provided by the user
     new = new[::downsample] ### FIXME

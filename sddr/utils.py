@@ -477,3 +477,132 @@ def _find_b(data, weights, target, min_b, max_b, rtol=DEFAULT_RTOL, verbose=Fals
         mid_b = (max_b*min_b)**0.5
 
     return mid_b
+
+#---------------------------------------------------------------------------------------------------
+### multi-dimensional routines
+
+def whiten(points, samples, weights, priors, low=0.1, high=0.9, verbose=False):
+    """
+    assumes
+        points.shape = Nfields, Npoints
+        samples.shape = Nfields, Nsamp
+        weights.shape = Nsamp,
+        priors.shape = Nfields, 2
+    and b should be a scalar
+    """
+    medians = np.median(samples, axis=1)
+    iqrs = np.percentile(samples, 100*high, axis=1) - np.percentile(samples, 100*low, axis=1)
+
+    if verbose:
+        print('whitening marginal distributions')
+        if len(samples.shape)==1:
+            print('  median = %+.3e'%(medians))
+            print('  IQR[%.2f,%.2f] = %+.3e'%(low, high, iqrs))
+
+        else:
+            for i, (m, s) in enumerate(zip(medians, iqrs)):
+                print('  median(%01d) = %+.3e'%(i, m))
+                print('  IQR[%.2f,%.2f](%01d) = %+.3e'%(low, high, i, s))
+
+    wpoints = np.transpose((np.transpose(points) - medians)/iqrs)
+    wsamples = np.transpose((np.transpose(samples) - medians)/iqrs)
+    wpriors = np.transpose((np.transpose(priors) - medians)/iqrs)
+
+    return (wpoints, wsamples, wpriors), (medians, iqrs)
+
+def nd_kde(points, samples, weights, priors, b=DEFAULT_B):
+    return _compute_nd_logkde(points, samples, weights, priors, b)
+
+def _compute_nd_logkde(points, samples, weights, priors, b=DEFAULT_B):
+    """
+    given (Nfields, Nsamp, Npoints), we expect
+        points.shape = Nfields, Npoints
+        samples.shape = Nfields, Nsamp
+        weights.shape = Nsamp,
+        priors.shape = Nfields, 2
+    and b should be a scalar
+
+    returns logkde evaluated at the meshgrid result of points with ordering='ij'
+    this includes reflecting each sample around the prior bounds
+    """
+    ### sanity check input
+    Nfields, Npoints = points.shape
+    nfields, Nsamp = samples.shape
+    assert nfields==Nfields
+    assert len(weights) == Nsamp
+    assert len(weights.shape) == 1
+    nfields, nbounds = priors.shape
+    assert nfields==Nfields
+    assert nbounds==2
+    assert isinstance(b, (int, float))
+
+    ### set up arrays
+    Neval = Npoints**Nfields
+    flat_logkde = np.empty((2, Neval), dtype='float')
+    flat_logkde[0,:] = -np.infty
+
+    flat_points = np.transpose(np.array([_.flatten() for _ in np.meshgrid(*points, indexing='ij')]))
+
+    m = np.empty(Neval, dtype='float') ### used when computing a maximum
+
+    ### set up kernel function on the fly
+    f = -0.5/b**2
+    g = Nfields*(0.5*np.log(2*np.pi) + np.log(b))
+    _nd_logkernel = lambda vector: f*np.sum((flat_points - vector)**2) - g
+
+    ### iterate over samples
+    for samp_ind, logw in enumerate(np.log(weights)):
+        vect = samples[:,samp_ind] ### extract the location of this sample
+
+        ### add in the contribution from that sample
+        flat_logkde[1,:] = _nd_logkernel(vect) + logw
+        m[:] = np.max(flat_logkde, axis=0)
+        flat_logkde[0,:] = np.log(np.sum(np.exp(flat_logkde-m), axis=0))+m
+
+        ### iterate over fields, adding reflected contribution for each field
+        for field_ind in xrange(Nfields):
+            x = vect[field_ind] # remember this becuase it is used repeatedly
+
+            # iterate over limits, adding a mirror image across each boundary
+            for lim in priors[field_ind]:
+                vect[field_ind] = 2*lim - x
+                flat_logkde[1,:] = _nd_logkernel(vect) + logw
+                m[:] = np.max(flat_logkde, axis=0)
+                flat_logkde[0,:] = np.log(np.sum(np.exp(flat_logkde-m), axis=0))+m
+
+            vect[field_ind] = x ### re-set the value to what it was initially
+
+    ### we're done with this, so we normalize by the number of samples
+    ### NOTE: assuming the whole integral is N will only be reasonable if the bandwidth used is much smaller than the width of the prior
+    flat_logkde -= np.log(Nsamp) + np.log(np.sum(weights))
+
+    ### reshape and return
+    return np.reshape(flat_logkde[0,:], (Npoints,)*Nfields)
+
+def nd_marg(points, logkde):
+    """
+    return a marginalized form of logkde, marginalizing over the last axis of both points and logkde
+    assumes
+        points.shape = Nfields, Npoints
+        logkde.shape = (Npoints,)*Nfields
+    """
+    N = len(points)
+    m = np.max(logkde, axis=axis)
+    return = np.log(np.trapz(np.exp(logkde-m), points[axis])) + m
+
+def nd_norm(points, logkde):
+    """
+    compute the norm of a multi-dimensional kde
+    does this by direct marginalization vi numpy.trapz
+
+    assumes
+        points.shape = Nfields, Npoints
+        logkde.shape = (Npoints,)*Nfields
+    """
+    N = len(points) ### number of fields
+
+    norm = nd_marg(points, logkde)
+    for i in xrange(1,N):
+        norm = nd_marg(points[:-i], norm)
+
+    return norm

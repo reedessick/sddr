@@ -13,6 +13,7 @@ from optparse import OptionParser
 
 ### non-standard libraries
 from sddr import utils
+from sddr import plot
 
 #-------------------------------------------------
 
@@ -54,6 +55,8 @@ parser.add_option('', '--num-points', default=utils.DEFAULT_NUM_POINTS, type='in
 
 parser.add_option('', '--kde-b', default=utils.DEFAULT_B, type='float', 
     help='the bandwidth used with whitened samples when computing the joint KDE')
+parser.add_option('', '--no-reflect', default=False, action='store_true',
+    help='do not use reflecting boundary conditions')
 
 parser.add_option('', '--exclude', default=[], type='string', action='append',
     help='skip this paramter from within joint KDE')
@@ -63,10 +66,15 @@ parser.add_option('-t', '--tag', default='', type='string')
 
 parser.add_option('', '--plot-events', default=False, action='store_true')
 parser.add_option('', '--plot-result', default=False, action='store_true')
+parser.add_option('', '--plot-log', default=False, action='store_true',
+    help='plot the log of the pdf, not the pdf')
+parser.add_option('', '--plot-level', default=[], type='float', action='append',
+    help='use these confidence levels when plotting contours of joint distributions. Can be repeated. \
+DEFAULT=[0.1, 0.5, 0.9]')
 
 parser.add_option('', '--level', default=[], type='float', action='append',
     help='compute upper limits corresponding to these levels. Can be repeated. \
-DEFAULT=[]')
+DEFAULT=[0.1, 0.5, 0.9]')
 
 opts, args = parser.parse_args()
 assert args, 'please supply at least 1 input argument\n%s'%__usage__
@@ -78,7 +86,10 @@ opts.verbose |= opts.Verbose
 if not os.path.exists(opts.output_dir):
     os.makedirs(opts.output_dir)
 
-filetag = "_"+opts.tag if opts.tag else ""
+opts.tag = "_"+opts.tag if opts.tag else ""
+
+if not opts.plot_level:
+    opts.plot_level = [0.1, 0.5, 0.9]
 
 #-------------------------------------------------
 
@@ -99,7 +110,7 @@ if opts.plot_events: ### we may push the bounds of memory available, so only cre
 #------------------------
 
 ### iterate over events, computing kde's for each and incorporating them into the total
-for ind, paths in enumerate(path_sets):
+for path_ind, paths in enumerate(path_sets):
     ### read in samples
     samples = utils.load(paths, field=fields, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
     samples = np.array([samples[field] for field in fields]) ### just do this for convenience. Get rid of structured arrays because I don't want to think that hard
@@ -130,12 +141,22 @@ for ind, paths in enumerate(path_sets):
         ### compute KDE
         if opts.verbose:
             print('computing joint %d-dimensional KDE'%Nfields)
-        event_logkde = utils.nd_kde(wpoints, wsamples, weights, wpriors, b=opts.kde_b)
+        event_logkde[...] = utils.nd_kde(wpoints, wsamples, weights, wpriors, b=opts.kde_b, reflect=1-opts.no_reflect)
+        logkde += event_logkde ### record this in the big array
 
         if opts.verbose:
-            print('plotting kde for event=%d'%ind)
-        fig = plot.kde2fit(points, event_logkde, priors, fields, b=opts.kde_b)
-        figname = "%s/sddr_stacked_%d%s.png"%(opts.output_dir, ind, opts.tag)
+            print('plotting kde for event=%d'%path_ind)
+        fig = plot.kde2fig(
+            points,
+            event_logkde,
+            priors,
+            fields,
+            sanitycheck_tuple=(samples, weights, wpoints, wsamples, wpriors, opts.kde_b),
+            log=opts.plot_log,
+            levels=opts.plot_level,
+        )
+
+        figname = "%s/sddr_stacked_%d%s.png"%(opts.output_dir, path_ind, opts.tag)
         if opts.verbose:
             print('saving: '+figname)
         fig.savefig(figname)
@@ -149,7 +170,7 @@ for ind, paths in enumerate(path_sets):
         logkde += utils.nd_kde(wpoints, wsamples, weights, wpriors, b=opts.kde_b)
 
 ### normalize the total joint kde over many events
-logkde -= utils.nd_norm(points, logkde)
+#logkde -= utils.nd_norm(points, logkde)
 
 #------------------------
 
@@ -157,7 +178,7 @@ logkde -= utils.nd_norm(points, logkde)
 if opts.plot_result:
     if opts.verbose:
         print('plotting joint kde')
-    fig = plot.kde2fit(points, event_logkde, priors, fields, b=opts.kde_b)
+    fig = plot.kde2fig(points, logkde, priors, fields, log=opts.plot_log, levels=opts.plot_level)
     figname = "%s/sddr_stacked%s.png"%(opts.output_dir, opts.tag)
     if opts.verbose:
         print('saving: '+figname)
@@ -168,18 +189,17 @@ if opts.plot_result:
 ### NOTE: assumes fields[0] = log10NLTides_A0
 if opts.verbose:
     print('marginalizing away %s to compute SDDR'%(', '.join(fields[1:])))
-for _ in xrange(Nfields-1):
-    logkde = utils.nd_marg(points[:-_], logkde)
+logkde = utils.nd_marg_leave1(points, logkde)[1]
 
 ### write resulting logkde to disk
-path = "%s/sddr_stacked-logkde%s.txt"
+path = "%s/sddr_stacked-logkde%s.txt"%(opts.output_dir, opts.tag)
 if opts.verbose:
     print('saving: '+path)
-np.savetxt(path, [points[0], logkde], header='log10NLTides_A0', 'logkde')
+np.savetxt(path, [points[0], logkde], header='log10NLTides_A0 logkde')
 
 ### compute confidence levels
 # compute the cumulative integral via a trapzoidal approximation
-integral = np.concatenate((np.array([0]), np.cumsum(0.5*(logkde[1:]+logkde[:-1])*np.diff(points[0])))
+integral = np.concatenate((np.array([0]), np.cumsum(0.5*(logkde[1:]+logkde[:-1])*np.diff(points[0]))))
 for level in opts.level:
     print('log10NLTides_A0 <= %.6e @ %.1f confidence'%(np.interp(level, integral, points[0]), 100*level))
 
@@ -190,4 +210,4 @@ logprior = -np.log(priors[0][1]-priors[0][0])
 
 print('logpost(Amin) = %.6e'%logpost)
 print('logprior = %.6e'%logprior)
-print('logpost(Amin)-logprior = %.63'%(logpost-logprior))
+print('logpost(Amin)-logprior = %.6e'%(logpost-logprior))

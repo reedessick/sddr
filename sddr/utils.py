@@ -510,10 +510,10 @@ def whiten(points, samples, weights, priors, low=0.1, high=0.9, verbose=False):
 
     return (wpoints, wsamples, wpriors), (medians, iqrs)
 
-def nd_kde(points, samples, weights, priors, b=DEFAULT_B):
-    return _compute_nd_logkde(points, samples, weights, priors, b)
+def nd_kde(points, samples, weights, priors, b=DEFAULT_B, reflect=True):
+    return _compute_nd_logkde(points, samples, weights, priors, b, reflect=reflect)
 
-def _compute_nd_logkde(points, samples, weights, priors, b=DEFAULT_B):
+def _compute_nd_logkde(points, samples, weights, priors, b=DEFAULT_B, reflect=True):
     """
     given (Nfields, Nsamp, Npoints), we expect
         points.shape = Nfields, Npoints
@@ -548,7 +548,7 @@ def _compute_nd_logkde(points, samples, weights, priors, b=DEFAULT_B):
     ### set up kernel function on the fly
     f = -0.5/b**2
     g = Nfields*(0.5*np.log(2*np.pi) + np.log(b))
-    _nd_logkernel = lambda vector: f*np.sum((flat_points - vector)**2) - g
+    _nd_logkernel = lambda vector: f*np.sum((flat_points - vector)**2, axis=1) - g
 
     ### iterate over samples
     for samp_ind, logw in enumerate(np.log(weights)):
@@ -560,17 +560,18 @@ def _compute_nd_logkde(points, samples, weights, priors, b=DEFAULT_B):
         flat_logkde[0,:] = np.log(np.sum(np.exp(flat_logkde-m), axis=0))+m
 
         ### iterate over fields, adding reflected contribution for each field
-        for field_ind in xrange(Nfields):
-            x = vect[field_ind] # remember this becuase it is used repeatedly
+        if reflect: ### add in points for reflecting boundary conditions
+            for field_ind in xrange(Nfields):
+                x = vect[field_ind] # remember this becuase it is used repeatedly
 
-            # iterate over limits, adding a mirror image across each boundary
-            for lim in priors[field_ind]:
-                vect[field_ind] = 2*lim - x
-                flat_logkde[1,:] = _nd_logkernel(vect) + logw
-                m[:] = np.max(flat_logkde, axis=0)
-                flat_logkde[0,:] = np.log(np.sum(np.exp(flat_logkde-m), axis=0))+m
+                # iterate over limits, adding a mirror image across each boundary
+                for lim in priors[field_ind]:
+                    vect[field_ind] = 2*lim - x
+                    flat_logkde[1,:] = _nd_logkernel(vect) + logw
+                    m[:] = np.max(flat_logkde, axis=0)
+                    flat_logkde[0,:] = np.log(np.sum(np.exp(flat_logkde-m), axis=0))+m
 
-            vect[field_ind] = x ### re-set the value to what it was initially
+                vect[field_ind] = x ### re-set the value to what it was initially
 
     ### we're done with this, so we normalize by the number of samples
     ### NOTE: assuming the whole integral is N will only be reasonable if the bandwidth used is much smaller than the width of the prior
@@ -579,7 +580,7 @@ def _compute_nd_logkde(points, samples, weights, priors, b=DEFAULT_B):
     ### reshape and return
     return np.reshape(flat_logkde[0,:], (Npoints,)*Nfields)
 
-def nd_marg(points, logkde):
+def nd_marg(points, logkde, axis=-1):
     """
     return a marginalized form of logkde, marginalizing over the last axis of both points and logkde
     assumes
@@ -587,8 +588,21 @@ def nd_marg(points, logkde):
         logkde.shape = (Npoints,)*Nfields
     """
     N = len(points)
-    m = np.max(logkde, axis=axis)
-    return = np.log(np.trapz(np.exp(logkde-m), points[axis])) + m
+    t = np.ones(len(points), dtype=bool)
+    t[axis] = False
+    m = np.max(logkde) ### NOTE: do NOT use axis here because you don't know how that's mangled into the next thing
+                       ### just use a single scalar
+    return points[t], np.log(np.trapz(np.exp(logkde-m), points[axis], axis=axis)) + m
+
+def nd_marg_leave1(points, logkde):
+    return nd_marg(*nd_marg_leave2(points, logkde))
+
+def nd_marg_leave2(points, logkde):
+    N = len(points) ### number of fields
+    if N > 2:
+        return nd_marg_leave2(*nd_marg(points, logkde))
+    else:
+        return points, logkde
 
 def nd_norm(points, logkde):
     """
@@ -599,10 +613,4 @@ def nd_norm(points, logkde):
         points.shape = Nfields, Npoints
         logkde.shape = (Npoints,)*Nfields
     """
-    N = len(points) ### number of fields
-
-    norm = nd_marg(points, logkde)
-    for i in xrange(1,N):
-        norm = nd_marg(points[:-i], norm)
-
-    return norm
+    return nd_marg(*nd_marg_leave1(points, logkde))[1] ### only return the final thing

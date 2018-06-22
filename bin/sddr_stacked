@@ -167,9 +167,15 @@ for path_ind, paths in enumerate(path_sets):
         logkde += utils.nd_kde(wpoints, wsamples, weights, wpriors, b=opts.kde_b)
 
 ### normalize the total joint kde over many events
-#logkde -= utils.nd_norm(points, logkde)
+logkde -= utils.nd_norm(points, logkde)
 
 #------------------------
+
+### write resulting logkde to disk
+path = "%s/sddr_stacked-fulllogkde%s.npy"%(opts.output_dir, opts.tag)
+if opts.verbose:
+    print('saving: '+path)
+np.save(path, [points, logkde])
 
 ### plot kde for sanity checking
 if opts.plot_result:
@@ -189,7 +195,7 @@ if opts.verbose:
 logkde = utils.nd_marg_leave1(points, logkde)[1]
 
 ### write resulting logkde to disk
-path = "%s/sddr_stacked-logkde%s.txt"%(opts.output_dir, opts.tag)
+path = "%s/sddr_stacked-marglogkde%s.txt"%(opts.output_dir, opts.tag)
 if opts.verbose:
     print('saving: '+path)
 np.savetxt(path, [points[0], logkde], header='log10NLTides_A0 logkde')

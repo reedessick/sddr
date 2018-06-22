@@ -14,7 +14,7 @@ from sddr import utils
 
 #-------------------------------------------------
 
-def kde2fig(points, logkde, priors, fields, sanitycheck_tuple=None, levels=[0.1, 0.5, 0.9], log=True):
+def kde2fig(points, logkde, priors, fields, sanitycheck_tuple=None, levels=[], log=True):
     """
     generate something like a corner plot for logkde
     assumes
@@ -135,9 +135,15 @@ def kde2fig(points, logkde, priors, fields, sanitycheck_tuple=None, levels=[0.1,
                 # actually plot
                 ans = utils.nd_marg_leave2(dummy_points, dummy_logkde)[1].transpose() ### FIXME: fill in a place-holder
                 if log:
-                    ax.contour(dummy_points[0], dummy_points[1], ans, levels=np.log(np.kde2levels(np.exp(ans), levels)), colors='b')
+                    if levels:
+                        ax.contour(dummy_points[0], dummy_points[1], ans, levels=np.log(np.kde2levels(np.exp(ans), levels)), colors='b')
+                    else:
+                        ax.contour(dummy_points[0], dummy_points[1], ans, colors='b')
                 else:
-                    ax.contour(dummy_points[0], dummy_points[1], np.exp(ans), levels=kde2levels(np.exp(ans), levels), colors='b')
+                    if levels:
+                        ax.contour(dummy_points[0], dummy_points[1], np.exp(ans), levels=kde2levels(np.exp(ans), levels), colors='b')
+                    else:
+                        ax.contour(dummy_points[0], dummy_points[1], np.exp(ans), colors='b')
 
                 # decorate
                 ax.set_xlim(priors[col])

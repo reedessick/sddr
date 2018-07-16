@@ -150,7 +150,10 @@ def kde2fig(points, logkde, priors, fields, sanitycheck_tuple=None, levels=[], l
                 ax.set_ylim(priors[row])
 
             if col > 0:
-                plt.setp(ax.get_yticklabels(), visible=False)
+                if col==row:
+                    ax.yaxis.tick_right()
+                else:
+                    plt.setp(ax.get_yticklabels(), visible=False)
             else:
                 ax.set_ylabel(fields[row])
 

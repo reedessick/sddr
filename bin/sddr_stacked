@@ -64,6 +64,10 @@ parser.add_option('', '--exclude', default=[], type='string', action='append',
 parser.add_option('-o', '--output-dir', default='.', type='string')
 parser.add_option('-t', '--tag', default='', type='string')
 
+parser.add_option('', '--average', default=False, action='store_true',
+    help='report the geometric mean rather than just the product of posteriors. \
+This is not what you would normall do in a stacking experiment, but is useful for diagnostics.')
+
 parser.add_option('', '--plot-events', default=False, action='store_true')
 parser.add_option('', '--plot-result', default=False, action='store_true')
 parser.add_option('', '--plot-log', default=False, action='store_true',
@@ -166,6 +170,9 @@ for path_ind, paths in enumerate(path_sets):
             print('computing joint %d-dimensional KDE'%Nfields)
         logkde += utils.nd_kde(wpoints, wsamples, weights, wpriors, b=opts.kde_b)
 
+if opts.average: ### take the geometric average
+    logkde /= len(path_sets)
+
 ### normalize the total joint kde over many events
 logkde -= utils.nd_norm(points, logkde)
 
@@ -202,9 +209,10 @@ np.savetxt(path, [points[0], logkde], header='log10NLTides_A0 logkde')
 
 ### compute confidence levels
 # compute the cumulative integral via a trapzoidal approximation
-integral = np.concatenate((np.array([0]), np.cumsum(0.5*(logkde[1:]+logkde[:-1])*np.diff(points[0]))))
 for level in opts.level:
-    print('log10NLTides_A0 <= %.6e @ %.1f confidence'%(np.interp(level, integral, points[0]), 100*level))
+    lower, upper = utils.logkde2limits(points[0], logkde, level)
+    print('log10NLTides_A0 >= %.6e @ %.1f confidence'%(lower, 100*level))
+    print('log10NLTides_A0 <= %.6e @ %.1f confidence'%(upper, 100*level))
 
 ### compute SDDR for logkde(logA)
 ### NOTE: assumes fields[0] = log10NLTides_A0 and uses some magic numbers based on that

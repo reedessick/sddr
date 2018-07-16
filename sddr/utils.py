@@ -587,12 +587,17 @@ def nd_marg(points, logkde, axis=-1):
         points.shape = Nfields, Npoints
         logkde.shape = (Npoints,)*Nfields
     """
+    ### make sure axis is the last axis (-1)
     N = len(points)
-    t = np.ones(len(points), dtype=bool)
+    trans = range(N)
+    trans.pop(axis) ### remove this
+    trans.append(axis) ### add it
+    logkde = logkde.transpose(*trans)
+    t = np.ones(N, dtype=bool)
     t[axis] = False
-    m = np.max(logkde) ### NOTE: do NOT use axis here because you don't know how that's mangled into the next thing
-                       ### just use a single scalar
-    return points[t], np.log(np.trapz(np.exp(logkde-m), points[axis], axis=axis)) + m
+
+    m = np.max(logkde, axis=-1)
+    return points[t], np.log(np.trapz(np.exp(logkde-np.outer(m, np.ones(logkde.shape[0])).reshape(logkde.shape)), points[axis], axis=-1)) + m
 
 def nd_marg_leave1(points, logkde):
     return nd_marg(*nd_marg_leave2(points, logkde))
@@ -614,3 +619,14 @@ def nd_norm(points, logkde):
         logkde.shape = (Npoints,)*Nfields
     """
     return nd_marg(*nd_marg_leave1(points, logkde))[1] ### only return the final thing
+
+def logkde2limits(points, logkde, level):
+    """
+    computes the upper limit derived from a kde at level
+    assumes points and logkde are 1-dimensional
+    """
+    kde = np.exp(logkde-np.max(logkde))
+    integral = np.concatenate((np.array([0]), np.cumsum(0.5*(kde[1:]+kde[:-1])*np.diff(points))))
+    integral /= integral[-1] ### make sure this is normalized appropriately
+    return np.interp(1-level, integral, points), np.interp(level, integral, points)
+

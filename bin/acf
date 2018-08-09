@@ -77,13 +77,14 @@ elif opts.exponentiate10_field:
 ### check prior bounds
 truth = (opts.prior_min <=samples)*(samples<=opts.prior_max)
 samples = samples[truth]
+Nsamp = len(samples)
 
 #-------------------------------------------------
 
 if opts.verbose:
     print('estimating the autocorrelation function')
 fft_samples = np.fft.fft(samples-np.mean(samples)) ### compute FFT of zero-mean'd samples
-acf = np.fft.ifft(fft_samples.real**2 + fft_samples.imag**2) ### estimate autocorrelation function
+acf = np.fft.ifft(fft_samples.real**2 + fft_samples.imag**2).real ### estimate autocorrelation function
 acf /= acf[0] ### normalize 
 
 line = np.arange(len(acf))
@@ -132,8 +133,15 @@ if opts.xmax is not None:
 
 x = line[line>=cacf]
 if len(x):
-    ax.plot([x[0]]*2, ax.get_ylim(), color='k')
-    ax.text(x[0], ax.get_ylim()[0], '%d'%x[0], ha='left', va='bottom')
+    x = x[0]
+else:
+    print('WARNING: ACL estimate is longer than chain!')
+    x = len(cacf)
+
+ax.plot([x]*2, ax.get_ylim(), color='k')
+ax.text(x, ax.get_ylim()[0], '%d'%x, ha='left', va='bottom')
+
+print('    ACL(%s) ~ %d --> %d indep samples out of %d raw samples'%(opts.field, x, np.floor(Nsamp/x), Nsamp))
 
 figname = '%s/cacf-%s%s.png'%(opts.output_dir, opts.field, opts.tag)
 if opts.verbose:

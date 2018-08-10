@@ -133,6 +133,7 @@ if opts.xmax is not None:
 
 x = line[line>=cacf] ### inspired by the discussion here https://dfm.io/posts/autocorr/
                      ### they suggest multiplying the acf by some constant prefactor (C~5), which I do not do
+                     ### I may also be missing a factor of 2 from the sum over both directions?
 if len(x):
     x = x[0]
 else:

@@ -131,7 +131,8 @@ if opts.xmax is not None:
     ax.set_xlim(xmax=opts.xmax)
     ax.set_ylim(ymin=np.min(cacf[line<=opts.xmax]), ymax=np.max(cacf[line<=opts.xmax]))
 
-x = line[line>=cacf]
+x = line[line>=cacf] ### inspired by the discussion here https://dfm.io/posts/autocorr/
+                     ### they suggest multiplying the acf by some constant prefactor (C~5), which I do not do
 if len(x):
     x = x[0]
 else:

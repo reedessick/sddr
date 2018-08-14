@@ -38,11 +38,11 @@ def b2logpost(points, samples, weights, b, prior_min, prior_max):
 
 def fixed_b(points, samples, weights, b, prior_min, prior_max, confidence=[], verbose=True, ax=None):
     logpost = b2logpost(points, samples, weights, b, prior_min, prior_max)
-    logprior = -np.log(np.exp(prior_max)-np.exp(prior_min))
+    logprior = -np.log(10**(prior_max)-10**(prior_min))
     if verbose:
         report(points, logpost, logprior, confidence)
     if ax is not None:
-        ax.plot(points, np.exp(logpost), color='g', label='fixed b')
+        ax.plot(points, np.exp(logpost), color='g', label='fixed b=%.3e'%b)
     return logpost[0]-logprior
 
 def max_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confidence=[], rtol=1e-4, verbose=True, Verbose=False, ax=None):
@@ -50,11 +50,11 @@ def max_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confid
     if verbose:
         print('    b=%.6e'%b)
     logpost = b2logpost(points, samples, weights, b, prior_min, prior_max)
-    logprior = -np.log(np.exp(prior_max)-np.exp(prior_min))
+    logprior = -np.log(10**(prior_max)-10**(prior_min))
     if verbose:
         report(points, logpost, logprior, confidence)
     if ax is not None:
-        ax.plot(points, np.exp(logpost), color='r', label='max b')
+        ax.plot(points, np.exp(logpost), color='r', label='max b=%.3e'%b)
     return logpost[0]-logprior
 
 def marg_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confidence=[], rtol=1e-4, dlogl=8, num_points=100, prior='lin', verbose=True, Verbose=False, ax=None):
@@ -63,7 +63,7 @@ def marg_b(points, samples, weights, (min_b, max_b), prior_min, prior_max, confi
     for b, w in zip(bs, ws):
         logpost += w*np.exp(b2logpost(points, samples, weights, b, prior_min, prior_max))
     logpost = np.log(logpost)
-    logprior = -np.log(np.exp(prior_max)-np.exp(prior_min))
+    logprior = -np.log(10**(prior_max)-10**(prior_min))
     if verbose:
         report(points, logpost, logprior, confidence)
     if ax is not None:

@@ -157,7 +157,7 @@ for foo, b, kwargs, name in [
     if opts.Verbose:
         for i, lp in enumerate(logposts):
             report += '''
-        subset %02d (%04d samples) logpost - logprior = %.6f'''%(i+1, len(subsets[i]), lp-logprior)
+        subset %02d (%04d samples) logpost - logprior = %.6f'''%(i+1, len(subsets[i][0]), lp-logprior)
     report += '''
     mean(logpost - logprior) = %.6f
     stdv(logpost - logprior) = %.6f'''%(np.mean(logposts)-logprior, np.std(logposts)/sqrtnum_subsets)
@@ -268,7 +268,7 @@ if opts.Verbose:
         report += '''
         subset %02d (%04d samples)
             logE[post] - logprior = %.6f
-            E[logpost] - logprior = %.6f'''%(i+1, len(subsets[i]), lEp-logprior, Elp-logprior, )
+            E[logpost] - logprior = %.6f'''%(i+1, len(subsets[i][0]), lEp-logprior, Elp-logprior, )
 report += '''
     mean(logE[post] - logprior) = %.6f
     stdv(logE[post] - logprior) = %.6f

@@ -53,6 +53,9 @@ def load(paths, field=DEFAULT_FIELD, deltaLogP=DEFAULT_DELTALOGP, downsample=DEF
         elif path.endswith('dat'):
             new = load_dat(path, field=field, downsample=downsample, verbose=verbose)
 
+        elif path.endswith('csv'):
+            new = load_csv(path, field=field, downsample=downsample, verbose=verbose)
+
         else:
             raise ValueError, 'do not know how to load: '+path
 
@@ -95,6 +98,19 @@ def load_hdf5(path, field=DEFAULT_FIELD,  deltaLogP=DEFAULT_DELTALOGP, downsampl
 
 def load_dat(path, field=DEFAULT_FIELD, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
     new = np.genfromtxt(path, names=True)
+    if verbose:
+        print('    found %d samples'%len(new))
+
+    new = new[::downsample]
+    if verbose:
+        print('    retained %d samples'%len(new))
+    if field is None:
+        return new
+    else:
+        return new[field]
+
+def load_csv(path, field=DEFAULT_FIELD, downsample=DEFAULT_DOWNSAMPLE, verbose=False):
+    new = np.genfromtxt(path, names=True, delimiter=',')
     if verbose:
         print('    found %d samples'%len(new))
 

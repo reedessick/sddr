@@ -86,6 +86,8 @@ parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='floa
 parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
     help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
 
+parser.add_option('--field', default='log10nltides_a0', type=str)
+
 parser.add_option('', '--skip', default=[], type='string', action='append',
     help='skip the computation of this particular estimate. Note, we require an exact match of the name, so these options might be pretty long...')
 
@@ -128,7 +130,7 @@ opts.confidence = sorted(opts.confidence)
 #-------------------------------------------------
 
 ### read in samples, hard code stuff because this is a pretty dedicated script
-samples = utils.load(args, field='log10NLTides_A0', deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
+samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
 weights = np.ones_like(samples, dtype='float')
 weights /= np.sum(weights)
 

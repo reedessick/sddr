@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-__usage__ = "acf [--options] samples.hdf5 [samples.hdf5 samples.hdf5 ...]"
 __doc__ = "an executable that computes things"
 __author__ = "reed.essick@ligo.org"
 
@@ -13,75 +12,77 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 ### non-standard libraries
 from sddr import utils
 
 #-------------------------------------------------
 
-parser = OptionParser(usage=__usage__, description=__doc__)
+parser = ArgumentParser(description=__doc__)
 
-parser.add_option('-v', '--verbose', default=False, action='store_true')
-parser.add_option('-V', '--Verbose', default=False, action='store_true')
+parser.add_argument('samples', nargs='+', type=str)
 
-parser.add_option('', '--field', default=utils.DEFAULT_FIELD, type='string',
+parser.add_argument('-v', '--verbose', default=False, action='store_true')
+parser.add_argument('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_argument('--field', default=utils.DEFAULT_FIELD, type=str,
     help='the field selected for the 1D marginalized KDE. \
 DEFAULT='+utils.DEFAULT_FIELD)
-parser.add_option('', '--exponentiate-field', default=False, action='store_true',
+parser.add_argument('--exponentiate-field', default=False, action='store_true',
     help='exponentiate the values in --field and make a KDE of those.')
-parser.add_option('', '--exponentiate10-field', default=False, action='store_true',
+parser.add_argument('--exponentiate10-field', default=False, action='store_true',
     help='exponentiate the values in --field and make a KDE of those.')
 
-parser.add_option('', '--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type='int',
+parser.add_argument('--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type=int,
     help='force the code to skip the first --initial-burnin samples, and then proceed with --deltaLogP logic. \
 DEFAULT=%d'%utils.DEFAULT_INITIAL_BURNIN)
-parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
+parser.add_argument('--deltaLogP', default=utils.DEFAULT_DELTALOGP, type=float,
     help='used when stripping burn-in from hdf5 files')
-parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
+parser.add_argument('--downsample', default=utils.DEFAULT_DOWNSAMPLE, type=int,
     help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
 
-parser.add_option('', '--prior-min', default=utils.DEFAULT_PRIOR_MIN, type='float')
-parser.add_option('', '--prior-max', default=utils.DEFAULT_PRIOR_MAX, type='float')
+parser.add_argument('--prior-min', default=utils.DEFAULT_PRIOR_MIN, type=float)
+parser.add_argument('--prior-max', default=utils.DEFAULT_PRIOR_MAX, type=float)
 
-parser.add_option('', '--xmax', default=None, type='float')
+parser.add_argument('--xmax', default=None, type=float)
 
-parser.add_option('-o', '--output-dir', default='.', type='string')
-parser.add_option('-t', '--tag', default='', type='string')
+parser.add_argument('-o', '--output-dir', default='.', type=str)
+parser.add_argument('-t', '--tag', default='', type=str)
 
-opts, args = parser.parse_args()
-assert args, 'please supply at least 1 input argument\n%s'%__usage__
-assert not (opts.exponentiate_field and opts.exponentiate10_field), 'please supply either --exponentiate-field or --exponentiate10-field, but not both\n%s'%__usage__
+args = parser.parse_args()
 
-opts.verbose |= opts.Verbose
+assert not (args.exponentiate_field and args.exponentiate10_field), 'please supply either --exponentiate-field or --exponentiate10-field, but not both'
 
-if not os.path.exists(opts.output_dir):
-    os.makedirs(opts.output_dir)
+args.verbose |= args.Verbose
 
-if opts.tag:
-    opts.tag = "_"+opts.tag
+if not os.path.exists(args.output_dir):
+    os.makedirs(args.output_dir)
+
+if args.tag:
+    args.tag = "_"+args.tag
 
 #-------------------------------------------------
 
 ### read in samples
-samples = utils.load(args, field=opts.field, deltaLogP=opts.deltaLogP, downsample=opts.downsample, initial_burnin=opts.initial_burnin, verbose=opts.verbose)
-if opts.exponentiate_field:
-    if opts.verbose:
+samples = utils.load(args.samples, field=args.field, deltaLogP=args.deltaLogP, downsample=args.downsample, initial_burnin=args.initial_burnin, verbose=args.verbose)
+if args.exponentiate_field:
+    if args.verbose:
         print('exponentiating samples')
     samples = np.exp(samples)
-elif opts.exponentiate10_field:
-    if opts.verbose:
+elif args.exponentiate10_field:
+    if args.verbose:
         print('exponentiating10 samples')
     samples = 10**samples
 
 ### check prior bounds
-truth = (opts.prior_min <=samples)*(samples<=opts.prior_max)
+truth = (args.prior_min <=samples)*(samples<=args.prior_max)
 samples = samples[truth]
 Nsamp = len(samples)
 
 #-------------------------------------------------
 
-if opts.verbose:
+if args.verbose:
     print('estimating the autocorrelation function')
 fft_samples = np.fft.fft(samples-np.mean(samples)) ### compute FFT of zero-mean'd samples
 acf = np.fft.ifft(fft_samples.real**2 + fft_samples.imag**2).real ### estimate autocorrelation function
@@ -89,7 +90,7 @@ acf /= acf[0] ### normalize
 
 line = np.arange(len(acf))
 
-if opts.verbose:
+if args.verbose:
     print('plotting acf')
 fig = plt.figure()
 ax = fig.gca()
@@ -97,23 +98,23 @@ ax = fig.gca()
 ax.plot(acf)
 
 ax.set_xlabel('mcmc steps')
-ax.set_ylabel('acf estimate: '+opts.field)
+ax.set_ylabel('acf estimate: '+args.field)
 
 ax.grid(True, which='both')
 
-if opts.xmax is not None:
-    ax.set_xlim(xmax=opts.xmax)
-    ax.set_ylim(ymin=np.min(acf[line<=opts.xmax]), ymax=np.max(acf[line<=opts.xmax]))
+if args.xmax is not None:
+    ax.set_xlim(xmax=args.xmax)
+    ax.set_ylim(ymin=np.min(acf[line<=args.xmax]), ymax=np.max(acf[line<=args.xmax]))
 
-figname = '%s/acf-%s%s.png'%(opts.output_dir, opts.field, opts.tag)
-if opts.verbose:
+figname = '%s/acf-%s%s.png'%(args.output_dir, args.field, args.tag)
+if args.verbose:
     print('saving: '+figname)
 fig.savefig(figname)
 plt.close(fig)
 
 #------------------------
 
-if opts.verbose:
+if args.verbose:
     print('plotting cumulative acf')
 fig = plt.figure()
 ax = fig.gca()
@@ -123,13 +124,13 @@ ax.plot(cacf)
 ax.plot(line, line)
 
 ax.set_xlabel('mcmc steps')
-ax.set_ylabel('cumulative acf estimate: '+opts.field)
+ax.set_ylabel('cumulative acf estimate: '+args.field)
 
 ax.grid(True, which='both')
 
-if opts.xmax is not None:
-    ax.set_xlim(xmax=opts.xmax)
-    ax.set_ylim(ymin=np.min(cacf[line<=opts.xmax]), ymax=np.max(cacf[line<=opts.xmax]))
+if args.xmax is not None:
+    ax.set_xlim(xmax=args.xmax)
+    ax.set_ylim(ymin=np.min(cacf[line<=args.xmax]), ymax=np.max(cacf[line<=args.xmax]))
 
 x = line[line>=cacf] ### inspired by the discussion here https://dfm.io/posts/autocorr/
                      ### they suggest multiplying the acf by some constant prefactor (C~5), which I do not do
@@ -143,10 +144,10 @@ else:
 ax.plot([x]*2, ax.get_ylim(), color='k')
 ax.text(x, ax.get_ylim()[0], '%d'%x, ha='left', va='bottom')
 
-print('    ACL(%s) ~ %d --> %d indep samples out of %d raw samples'%(opts.field, x, np.floor(Nsamp/x), Nsamp))
+print('    ACL(%s) ~ %d --> %d indep samples out of %d raw samples'%(args.field, x, np.floor(Nsamp/x), Nsamp))
 
-figname = '%s/cacf-%s%s.png'%(opts.output_dir, opts.field, opts.tag)
-if opts.verbose:
+figname = '%s/cacf-%s%s.png'%(args.output_dir, args.field, args.tag)
+if args.verbose:
     print('saving: '+figname)
 fig.savefig(figname)
 plt.close(fig)

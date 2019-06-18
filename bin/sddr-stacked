@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-__usage__ = "sddr_stacked [--options] samples.hdf5,samples.hdf5,...,samples.hdf5 [samples.hdf5,...,samples.hdf5 samples.hdf5,...,samples.hdf5 ...]"
 __doc__ = "an executable that computes the equivalent of sddr, but with stacked events"
 __author__ = "reed.essick@ligo.org"
 
@@ -9,7 +8,7 @@ __author__ = "reed.essick@ligo.org"
 import os
 import numpy as np
 
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 ### non-standard libraries
 from sddr import utils
@@ -17,32 +16,29 @@ from sddr import plot
 
 #-------------------------------------------------
 
-FIELDS = [
-    'log10NLTides_A0', ### NOTE: this must always appear as index 0, otherwise marginalization logic will break when estimating the SDDR
-    'NLTides_F0',
-    'NLTides_N0',
-    'NLTides_dlogAdm',
-    'NLTides_dFdm',
-    'NLTides_dNdm',
-]
+parser = ArgumentParser(description=__doc__)
 
-PRIORS = {
-    'log10NLTides_A0': (-10, -5.5),
-    'NLTides_F0': (10, 100),
-    'NLTides_N0': (-1, +3),
-    'NLTides_dlogAdm': (-1, +1),
-    'NLTides_dFdm': (-10, +10),
-    'NLTides_dNdm': (-1, +1),
-}
+parser.add_argument('-s', '--samples', nargs=3, type=str, default=[], action='append',
+    help='eg, "--samples label samples.hdf5 bandwidths.csv"')
 
-#-------------------------------------------------
+parser.add_argument('fields', nargs="+", type=str,
+    help='all fields that must be included in the stacking experiment and marginalized over')
+parser.add_argument('--target-field', type=str,
+    help='the target column for stacking')
 
-parser = OptionParser(usage=__usage__, description=__doc__)
+parser.add_argument('-v', '--verbose', default=False, action='store_true')
 
-parser.add_option('-v', '--verbose', default=False, action='store_true')
-parser.add_option('-V', '--Verbose', default=False, action='store_true')
+args = parser.parse_args()
 
-parser.add_option('', '--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type='int',
+assert args.samples, 'please supply at least one --samples'
+
+#------------------------------------------------
+
+raise NotImplementedError('CLEAN UP THE REST OF THIS SCRIPT AND IMPLEMENTED STACKED KDE-BASED ESTIMATOR')
+
+
+'''
+parser.add_argument('', '--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type='int',
     help='force the code to skip the first --initial-burnin samples, and then proceed with --deltaLogP logic. \
 DEFAULT=%d'%utils.DEFAULT_INITIAL_BURNIN)
 parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='float',
@@ -50,16 +46,8 @@ parser.add_option('', '--deltaLogP', default=utils.DEFAULT_DELTALOGP, type='floa
 parser.add_option('', '--downsample', default=utils.DEFAULT_DOWNSAMPLE, type='int',
     help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
 
-parser.add_option('', '--num-points', default=utils.DEFAULT_NUM_POINTS, type='int',
-    help='the number of points used in each dimension of the big KDE grid')
-
-parser.add_option('', '--kde-b', default=utils.DEFAULT_B, type='float', 
-    help='the bandwidth used with whitened samples when computing the joint KDE')
 parser.add_option('', '--no-reflect', default=False, action='store_true',
     help='do not use reflecting boundary conditions')
-
-parser.add_option('', '--exclude', default=[], type='string', action='append',
-    help='skip this paramter from within joint KDE')
 
 parser.add_option('-o', '--output-dir', default='.', type='string')
 parser.add_option('-t', '--tag', default='', type='string')
@@ -222,3 +210,4 @@ logprior = -np.log(priors[0][1]-priors[0][0])
 print('logpost(Amin) = %.6e'%logpost)
 print('logprior = %.6e'%logprior)
 print('logpost(Amin)-logprior = %.6e'%(logpost-logprior))
+'''

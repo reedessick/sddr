@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-__usage__ = "sddr_plot [--options]"
 __doc__ = "a plotting script"
 __author__ = "reed.essick@ligo.org"
 
@@ -17,7 +16,7 @@ plt.rcParams['text.usetex'] = True
 
 from collections import defaultdict
 
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 #-------------------------------------------------
 
@@ -33,43 +32,43 @@ spin2color = {
 
 #-------------------------------------------------
 
-parser = OptionParser(usage=__usage__, description=__doc__)
+parser = ArgumentParser(description=__doc__)
 
-parser.add_option('-v', '--verbose', default=False, action='store_true')
+parser.add_argument('-v', '--verbose', default=False, action='store_true')
 
-parser.add_option('-i', '--input', nargs=2, default=[], type='string', action='append',
+parser.add_argument('-i', '--input', nargs=2, default=[], type=str, action='append',
     help='the label and path for a cdf file. \
 e.g.: --input label sddr.txt')
 
-parser.add_option('-a', '--annotate', nargs=2, default=[], type='string', action='append',
+parser.add_argument('-a', '--annotate', nargs=2, default=[], type=str, action='append',
     help='the label and value for an annotation. \
 e.g.: --annotate "marginalized kde" 0.3')
 
-parser.add_option('', '--no-legend', default=False, action='store_true')
+parser.add_argument('--no-legend', default=False, action='store_true')
 
-parser.add_option('', '--xmin', default=None, type='float')
-parser.add_option('', '--xmax', default=None, type='float')
-parser.add_option('', '--summed', default=False, action='store_true',
+parser.add_argument('--xmin', default=None, type=float)
+parser.add_argument('--xmax', default=None, type=float)
+parser.add_argument('--summed', default=False, action='store_true',
     help='plot the summed distributions instead of individual distributions. \
 Requires both --xmin and --xmax to be provided.')
 
-parser.add_option('', '--ignore-nan', default=False, action='store_true')
+parser.add_argument('--ignore-nan', default=False, action='store_true')
 
-parser.add_option('-o', '--output-dir', default='.', type='string')
-parser.add_option('-t', '--tag', default='', type='string')
+parser.add_argument('-o', '--output-dir', default='.', type=str)
+parser.add_argument('-t', '--tag', default='', type=str)
 
-opts, args = parser.parse_args()
+args = parser.parse_args()
 
-assert opts.input, 'please supply at least one --input option\n%s'%__usage__
-opts.annotate = [(label if label!='EMPTY' else '', float(value)) for label, value in opts.annotate]
+assert args.input, 'please supply at least one --input option'
+args.annotate = [(label if label!='EMPTY' else '', float(value)) for label, value in args.annotate]
 
-if not os.path.exists(opts.output_dir):
-    os.makedirs(opts.output_dir)
+if not os.path.exists(args.output_dir):
+    os.makedirs(args.output_dir)
 
-if opts.tag:
-    opts.tag = "_"+opts.tag
+if args.tag:
+    args.tag = "_"+args.tag
 
-if opts.summed and ((opts.xmin is None) or (opts.xmax is None)):
+if args.summed and ((args.xmin is None) or (args.xmax is None)):
     raise ValueError('please specify both --xmin and --xmax when using --summed')
 
 #-------------------------------------------------
@@ -81,18 +80,18 @@ fig = plt.figure(figsize=(figwidth, figheight))
 AX = plt.subplot(2,1,1)
 ax = plt.subplot(2,1,2)
 
-if opts.summed:
-    LOGBAYES = np.linspace(opts.xmin, opts.xmax, 1001)
+if args.summed:
+    LOGBAYES = np.linspace(args.xmin, args.xmax, 1001)
     CDF = np.zeros_like(LOGBAYES, dtype='float')
     count = 0
 
-for label, path in opts.input:
-    if opts.verbose:
+for label, path in args.input:
+    if args.verbose:
         print('reading: '+path)
     logbayes, cdf = np.genfromtxt(path, skiprows=1).transpose()
 
     if np.any(cdf!=cdf):
-        if opts.ignore_nan:
+        if args.ignore_nan:
             continue
         else:
             raise ValueError, 'ran into a nan!'
@@ -100,7 +99,7 @@ for label, path in opts.input:
     #      flip this so we get NL - PP
     logbayes *= -1
 
-    if opts.summed:
+    if args.summed:
         CDF += np.interp(LOGBAYES, logbayes[::-1], cdf[::-1]) ### reverse order so interpolation makes sense
         count += 1
 
@@ -108,7 +107,7 @@ for label, path in opts.input:
         AX.plot(logbayes, cdf, label=label)
         ax.plot(logbayes, -np.gradient(cdf, np.gradient(logbayes)), label=label)
 
-if opts.summed:
+if args.summed:
     CDF /= count
     AX.plot(LOGBAYES, CDF)
     ax.plot(LOGBAYES, -np.gradient(CDF, np.gradient(LOGBAYES)))
@@ -118,8 +117,8 @@ YLIM = AX.get_ylim()
 dx = np.diff(ax.get_xlim())*0.01
 dy = np.diff(YLIM)*0.01
 DY = dy*10
-opts.annotate.sort(key=lambda l: l[1])
-for i, (label, value) in enumerate(opts.annotate):
+args.annotate.sort(key=lambda l: l[1])
+for i, (label, value) in enumerate(args.annotate):
     ax.plot([value]*2, ylim, 'k--')
     AX.plot([value]*2, YLIM, 'k--')
     AX.text(value+dx, YLIM[1]-i*DY-dy, ' '+label, ha='left', va='top')
@@ -127,10 +126,10 @@ for i, (label, value) in enumerate(opts.annotate):
 AX.set_ylim(YLIM)
 ax.set_ylim(ylim)
 
-if opts.xmin is not None:
-    ax.set_xlim(xmin=opts.xmin)
-if opts.xmax is not None:
-    ax.set_xlim(xmax=opts.xmax)
+if args.xmin is not None:
+    ax.set_xlim(xmin=args.xmin)
+if args.xmax is not None:
+    ax.set_xlim(xmax=args.xmax)
 AX.set_xlim(ax.get_xlim())
 
 plt.setp(AX.get_xticklabels(), visible=False)
@@ -141,7 +140,7 @@ ax.set_ylabel('pdf')
 AX.grid(True, which='both')
 ax.grid(True, which='both')
 
-if not opts.no_legend:
+if not args.no_legend:
     ax.legend(loc='best')
 
 plt.subplots_adjust(
@@ -149,8 +148,8 @@ plt.subplots_adjust(
     wspace=0.01,
 )
 
-figname = "%s/sddr%s.png"%(opts.output_dir, opts.tag)
-if opts.verbose:
+figname = "%s/sddr%s.png"%(args.output_dir, args.tag)
+if args.verbose:
     print('saving: '+figname)
 fig.savefig(figname)
 plt.close(fig)

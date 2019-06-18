@@ -1,0 +1,179 @@
+#!/usr/bin/env python
+
+__usage__ = "sddr_sanitycheck [--options] samples.hdf5 [samples.hdf5 samples.hdf5 ...]"
+__doc__ = "a plotting script"
+__author__ = "reed.essick@ligo.org"
+
+#-------------------------------------------------
+
+import os
+
+import numpy as np
+
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib import pyplot as plt
+#plt.rcParams['text.usetex'] = True
+
+from argparse import ArgumentParser
+
+### non-standard libraries
+from sddr import utils
+
+#-------------------------------------------------
+
+parser = ArgumentParser(description=__doc__)
+
+parser.add_argument('samples', nargs='+', type=str)
+
+parser.add_argument('-v', '--verbose', default=False, action='store_true')
+parser.add_argument('-V', '--Verbose', default=False, action='store_true')
+
+parser.add_argument('--field', default=utils.DEFAULT_FIELD, type=str,
+    help='the field selected for the 1D marginalized KDE. \
+DEFAULT='+utils.DEFAULT_FIELD)
+parser.add_argument('--exponentiate-field', default=False, action='store_true',
+    help='exponentiate the values in --field and make a KDE of those.')
+parser.add_argument('--exponentiate10-field', default=False, action='store_true',
+    help='exponentiate the values in --field and make a KDE of those.')
+
+parser.add_argument('--weight-field', default=None, type=str,
+    help='if supplied, read values corresponding to this field and use a weights within KDE')
+parser.add_argument('--exponentiate-weight-field', default=False, action='store_true',
+    help='exponentiate the values in --weight-field if supplied and use those as the weights.')
+parser.add_argument('--exponentiate10-weight-field', default=False, action='store_true',
+    help='exponentiate the values in --weight-field if supplied and use those as the weights.')
+
+parser.add_argument('--initial-burnin', default=utils.DEFAULT_INITIAL_BURNIN, type=int,
+    help='force the code to skip the first --initial-burnin samples, and then proceed with --deltaLogP logic. \
+DEFAULT=%d'%utils.DEFAULT_INITIAL_BURNIN)
+parser.add_argument('--deltaLogP', default=utils.DEFAULT_DELTALOGP, type=float,
+    help='used when stripping burn-in from hdf5 files')
+parser.add_argument('--downsample', default=utils.DEFAULT_DOWNSAMPLE, type=int,
+    help='only retain 1 out of every --downsample samples after stripping burn-in. Used when reading both file types')
+
+parser.add_argument('--prior-min', default=utils.DEFAULT_PRIOR_MIN, type=float)
+parser.add_argument('--prior-max', default=utils.DEFAULT_PRIOR_MAX, type=float)
+parser.add_argument('--num-points', default=utils.DEFAULT_NUM_POINTS, type=int)
+
+parser.add_argument('--hist-bins', default=None, type=int)
+
+parser.add_argument('--kde-b', default=utils.DEFAULT_B, type=float)
+
+parser.add_argument('--kde-b-range', nargs=2, default=utils.DEFAULT_B_RANGE, type=float)
+parser.add_argument('--kde-rtol', default=utils.DEFAULT_RTOL, type=float)
+
+parser.add_argument('--kde-dlogl', default=utils.DEFAULT_DLOGL, type=float)
+parser.add_argument('--kde-num-points', default=utils.DEFAULT_NUM_POINTS, type=int)
+parser.add_argument('--kde-b-prior', default=utils.DEFAULT_B_PRIOR, type=str)
+
+parser.add_argument('--plot-min', default=None, type=float)
+parser.add_argument('--plot-max', default=None, type=float)
+
+parser.add_argument('-o', '--output-dir', default='.', type=str)
+parser.add_argument('-t', '--tag', default='', type=str)
+
+args = parser.parse_args()
+
+if not os.path.exists(args.output_dir):
+    os.makedirs(args.output_dir)
+
+if args.tag:
+    args.tag = "_"+args.tag
+
+args.verbose |= args.Verbose
+
+#-------------------------------------------------
+
+### read in samples
+samples = utils.load(args.samples, field=args.field, deltaLogP=args.deltaLogP, downsample=args.downsample, initial_burnin=args.initial_burnin, verbose=args.verbose)
+if args.exponentiate_field:
+    if args.verbose:
+        print('exponentiating samples')
+    samples = np.exp(samples)
+elif args.exponentiate10_field:
+    if args.verbose:
+        print('exponentiating10 samples')
+    samples = 10**samples
+
+if args.weight_field:
+    weights = utils.load(args.samples, field=args.weight_field, deltaLogP=args.deltaLogP, downsample=args.downsample, initial_burnin=args.initial_burnin, verbose=args.verbose)
+    if args.exponentiate_weight_field:
+        if args.verbose:
+            print('exponentiating weights')
+        weights = np.exp(weights)
+    elif args.exponentiate10_weight_field:
+        if args.verbose:
+            print('exponentiating10 weights')
+        weights = 10**weights
+else:
+    weights = np.ones_like(samples, dtype='float')
+weights /= np.sum(weights)
+
+### check prior bounds
+truth = (args.prior_min <=samples)*(samples<=args.prior_max)
+samples = samples[truth]
+weights = weights[truth]
+
+#-------------------------------------------------
+
+### generate sample points...
+points = np.linspace(args.plot_min if args.plot_min is not None else args.prior_min, args.plot_max if args.plot_max is not None else args.prior_max, args.num_points)
+
+fig = plt.figure()
+ax = fig.gca()
+
+# plot histogram
+if args.verbose:
+    print('working on histogram')
+bins = utils._get_hist_bins(len(samples))
+ax.hist(samples, bins=bins, histtype='step', label='$\mathrm{hist}$', normed=True, weights=weights, alpha=0.75)
+
+# compute kde with fixed bandwidth
+if args.verbose:
+    print('working on kde with fixed bandwidth')
+logkde = [utils._compute_logkde(x, samples, weights, b=args.kde_b, prior_min=args.prior_min, prior_max=args.prior_max) for x in points]
+
+ax.plot(points, np.exp(logkde), label='$K(x|b=%.3e, d)$'%args.kde_b, alpha=0.75)
+
+# find best bandwidth, compute kde
+if args.verbose:
+    print('working on kde with optimal bandwidth')
+max_b = utils.optimize_bandwidth(samples, weights, *args.kde_b_range, rtol=args.kde_rtol, verbose=args.Verbose)
+if args.Verbose:
+    print('    max_b=%.3e'%max_b)
+max_logkde = [utils._compute_logkde(x, samples, weights, b=max_b, prior_min=args.prior_min, prior_max=args.prior_max) for x in points]
+
+ax.plot(points, np.exp(max_logkde), label='$K(x|b_\mathrm{max}=%.3e, d)$'%max_b, alpha=0.75)
+
+# marginalize over bandwidth, compute kde
+if args.verbose:
+    print('working on kde marginalized over bandwidth')
+bs, ws = utils.marginalize_bandwidth(samples, weights, *args.kde_b_range, rtol=args.kde_rtol, dlogl=args.kde_dlogl, num_points=args.kde_num_points, prior=args.kde_b_prior, verbose=args.Verbose)
+marg_logkde = [np.log(np.sum([w*np.exp(utils._compute_logkde(x, samples, weights, b=b, prior_min=args.prior_min, prior_max=args.prior_max)) for b, w in zip(bs, ws)])) for x in points]
+
+ax.plot(points, np.exp(marg_logkde), label='$\int db\, K(x|b;d) p(b|d)$', alpha=0.75)
+
+### decorate
+if args.exponentiate_field:
+    ax.set_xlabel('$e^{%s}$'%args.field.replace('_','\_'))
+elif args.exponentiate10_field:
+    ax.set_xlabel('$10^{%s}$'%args.field.replace('_','\_'))
+else:
+    ax.set_xlabel(args.field.replace('_','\_'))
+plt.setp(ax.get_yticklabels(), visible=False)
+
+ax.grid(True, which='both')
+ax.legend(loc='best')
+
+if args.plot_max is not None:
+    ax.set_xlim(xmax=args.plot_max)
+if args.plot_min is not None:
+    ax.set_xlim(xmin=args.plot_min)
+
+### save
+figname = '%s/sddr_sanitycheck%s.png'%(args.output_dir, args.tag)
+if args.verbose:
+    print('saving: '+figname)
+fig.savefig(figname)
+plt.close(fig)
